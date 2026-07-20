@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light;
+
+  /* Colores base de la interfaz (modo claro) */
+  --bg-page: #f3f4f6;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafc;
+  --border: #cbd5e1;
+  --text-primary: #1f2937;
+  --text-muted: #6b7280;
+}
+
+:root[data-theme='oscuro'] {
+  color-scheme: dark;
+
+  /* Colores base de la interfaz (modo oscuro) */
+  --bg-page: #0f172a;
+  --surface: #1e293b;
+  --surface-subtle: #263449;
+  --border: #334155;
+  --text-primary: #f1f5f9;
+  --text-muted: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100vh;
+}
