@@ -20,9 +20,14 @@ export default function App() {
   const [tabActiva, setTabActiva] = useState<Tab>('agenda');
   const [vistaAgenda, setVistaAgenda] = useState<VistaAgenda>('dia');
   const [refrescoStats, setRefrescoStats] = useState(0);
-  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(
-    () => new Date().toISOString().split('T')[0]
-  );
+  const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(() => {
+    // Fecha local de hoy sin pasar por toISOString() (evita desfases de zona horaria)
+    const ahora = new Date();
+    const y = ahora.getFullYear();
+    const m = String(ahora.getMonth() + 1).padStart(2, '0');
+    const d = String(ahora.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   const dispararRefresco = () => setRefrescoStats((n) => n + 1);
 
   useEffect(() => {

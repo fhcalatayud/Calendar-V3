@@ -126,9 +126,31 @@ export default function ConfiguracionPerfil({
                   >
                     <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.5rem' }}>{t.titulo}</div>
                     <div className="row" style={{ gap: '0.5rem' }}>
-                      <input type="time" value={t.inicio} onChange={(e) => t.setInicio(e.target.value)} className="input" style={{ color: t.bg ? '#fff' : 'var(--text-primary)' }} />
+                      <input
+                        type="time"
+                        value={t.inicio}
+                        onChange={(e) => t.setInicio(e.target.value)}
+                        className="input"
+                        style={{
+                          color: t.bg ? '#fff' : 'var(--text-primary)',
+                          backgroundColor: t.bg ? 'rgba(255,255,255,0.12)' : undefined,
+                          borderColor: t.bg ? 'rgba(255,255,255,0.35)' : undefined,
+                          colorScheme: t.bg ? 'dark' : undefined,
+                        }}
+                      />
                       <span style={{ color: t.bg ? '#cbd5e1' : 'var(--text-muted)' }}>—</span>
-                      <input type="time" value={t.fin} onChange={(e) => t.setFin(e.target.value)} className="input" style={{ color: t.bg ? '#fff' : 'var(--text-primary)' }} />
+                      <input
+                        type="time"
+                        value={t.fin}
+                        onChange={(e) => t.setFin(e.target.value)}
+                        className="input"
+                        style={{
+                          color: t.bg ? '#fff' : 'var(--text-primary)',
+                          backgroundColor: t.bg ? 'rgba(255,255,255,0.12)' : undefined,
+                          borderColor: t.bg ? 'rgba(255,255,255,0.35)' : undefined,
+                          colorScheme: t.bg ? 'dark' : undefined,
+                        }}
+                      />
                     </div>
                   </div>
                 ))}

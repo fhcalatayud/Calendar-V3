@@ -73,11 +73,19 @@ export default function VistaCuadriculaSemanal({
   const [quehaceres, setQuehaceres] = useState<any[]>([]);
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
 
-  const [fechaBase, setFechaBase] = useState<Date>(() => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    return hoy;
-  });
+  // Devuelve la fecha de HOY como Date, calculada a partir de los componentes
+  // LOCALES (año/mes/día) y parseada como fecha "pelada" ('YYYY-MM-DD', que JS
+  // interpreta en UTC). Evita el desfase de un día que se produce si se usa
+  // setHours(0,0,0,0) + toISOString() en zonas horarias adelantadas a UTC.
+  const obtenerHoyComoFecha = () => {
+    const ahora = new Date();
+    const y = ahora.getFullYear();
+    const m = String(ahora.getMonth() + 1).padStart(2, '0');
+    const d = String(ahora.getDate()).padStart(2, '0');
+    return new Date(`${y}-${m}-${d}`);
+  };
+
+  const [fechaBase, setFechaBase] = useState<Date>(() => obtenerHoyComoFecha());
 
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
@@ -92,6 +100,7 @@ export default function VistaCuadriculaSemanal({
   const [drag, setDrag] = useState<DragState | null>(null);
   const [confirmPendiente, setConfirmPendiente] = useState<ConfirmPendiente>(null);
   const [sobrePapelera, setSobrePapelera] = useState(false);
+  const [diaTurnoAbierto, setDiaTurnoAbierto] = useState<string | null>(null);
   const papeleraRef = useRef<HTMLDivElement>(null);
 
   const rangoHoras = Array.from(
@@ -162,9 +171,7 @@ export default function VistaCuadriculaSemanal({
     setFechaBase(d);
   };
   const irHoy = () => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    setFechaBase(hoy);
+    setFechaBase(obtenerHoyComoFecha());
   };
 
   const cambiarMes = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -554,23 +561,24 @@ export default function VistaCuadriculaSemanal({
       }
 
       const deltaHoras = (e.clientY - drag.startY) / ALTURA_FILA;
-      if (Math.abs(e.clientY - drag.startY) > UMBRAL_MOVIMIENTO && !drag.moved) {
-        setDrag({ ...drag, moved: true });
-      }
+      // OJO: el flag 'moved' se calcula aquí y se incluye en la MISMA llamada
+      // a setDrag que actualiza la posición, para que no lo pise una segunda
+      // llamada a setDrag basada en el mismo 'drag' (closure) desactualizado.
+      const movidoAhora = drag.moved || Math.abs(e.clientY - drag.startY) > UMBRAL_MOVIMIENTO;
 
       if (drag.tipo === 'mover') {
         let nuevoInicio = snap(drag.inicioOriginal + deltaHoras);
         nuevoInicio = Math.max(0, Math.min(nuevoInicio, 24 - drag.duracion));
         const nuevoDia = obtenerColumnaPorX(e.clientX) || drag.currentDia;
-        setDrag({ ...drag, currentInicio: nuevoInicio, currentDia: nuevoDia });
+        setDrag({ ...drag, currentInicio: nuevoInicio, currentDia: nuevoDia, moved: movidoAhora });
       } else if (drag.tipo === 'redimensionar-superior') {
         let nuevoInicio = snap(drag.inicioOriginal + deltaHoras);
         nuevoInicio = Math.max(0, Math.min(nuevoInicio, drag.finOriginal - 0.25));
-        setDrag({ ...drag, currentInicio: nuevoInicio });
+        setDrag({ ...drag, currentInicio: nuevoInicio, moved: movidoAhora });
       } else if (drag.tipo === 'redimensionar-inferior') {
         let nuevoFin = snap(drag.finOriginal + deltaHoras);
         nuevoFin = Math.max(drag.inicioOriginal + 0.25, Math.min(nuevoFin, 24));
-        setDrag({ ...drag, currentFin: nuevoFin });
+        setDrag({ ...drag, currentFin: nuevoFin, moved: movidoAhora });
       }
     };
 
@@ -705,7 +713,8 @@ export default function VistaCuadriculaSemanal({
     return <div className="empty-state">Cargando semana...</div>;
   }
 
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const ahoraLocalHoy = new Date();
+  const hoyStr = `${ahoraLocalHoy.getFullYear()}-${String(ahoraLocalHoy.getMonth() + 1).padStart(2, '0')}-${String(ahoraLocalHoy.getDate()).padStart(2, '0')}`;
 
   const ghost =
     drag && (drag.tipo === 'mover' || drag.tipo === 'redimensionar-superior' || drag.tipo === 'redimensionar-inferior')
@@ -736,8 +745,6 @@ export default function VistaCuadriculaSemanal({
     { tipo: 'vacaciones', etiqueta: '✈️ Vacaciones', color: 'var(--error)', bg: 'var(--error-bg)' },
     { tipo: 'libre', etiqueta: '🟢 Libre / Quitar', color: 'var(--success)', bg: 'var(--success-bg)' },
   ];
-
-  const [diaTurnoAbierto, setDiaTurnoAbierto] = useState<string | null>(null);
 
   return (
     <div>
