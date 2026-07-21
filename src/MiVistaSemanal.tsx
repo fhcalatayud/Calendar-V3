@@ -67,11 +67,20 @@ export default function MiVistaSemanal({
   const [diasSemana, setDiasSemana] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [fechaBase, setFechaBase] = useState<Date>(() => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    return hoy;
-  });
+  // Devuelve la fecha de HOY como Date, calculada a partir de los componentes
+  // LOCALES (año/mes/día tal cual los ve el usuario) y parseada como fecha
+  // "pelada" ('YYYY-MM-DD', que JS interpreta en UTC). Evita el desfase de un
+  // día que se produce si se usa setHours(0,0,0,0) + toISOString() en zonas
+  // horarias adelantadas a UTC (como España).
+  const obtenerHoyComoFecha = () => {
+    const ahora = new Date();
+    const y = ahora.getFullYear();
+    const m = String(ahora.getMonth() + 1).padStart(2, '0');
+    const d = String(ahora.getDate()).padStart(2, '0');
+    return new Date(`${y}-${m}-${d}`);
+  };
+
+  const [fechaBase, setFechaBase] = useState<Date>(() => obtenerHoyComoFecha());
 
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [quehaceres, setQuehaceres] = useState<any[]>([]);
@@ -166,9 +175,7 @@ export default function MiVistaSemanal({
   };
   const irSemana = (delta: number) => irDia(delta * 7);
   const irHoy = () => {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    setFechaBase(hoy);
+    setFechaBase(obtenerHoyComoFecha());
   };
 
   const cambiarMes = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -568,22 +575,25 @@ export default function MiVistaSemanal({
       }
 
       const deltaHoras = (e.clientY - drag.startY) / ALTURA_FILA;
-      if (Math.abs(e.clientY - drag.startY) > UMBRAL_MOVIMIENTO && !drag.moved) {
-        setDrag({ ...drag, moved: true });
-      }
+      // OJO: el flag 'moved' se calcula aquí y se incluye en la MISMA llamada
+      // a setDrag que actualiza la posición. Si se hacen dos setDrag(...)
+      // seguidos (uno para 'moved' y otro para la posición), el segundo pisa
+      // al primero porque ambos parten del mismo 'drag' (closure) sin
+      // enterarse el uno del otro, y 'moved' se queda siempre en false.
+      const movidoAhora = drag.moved || Math.abs(e.clientY - drag.startY) > UMBRAL_MOVIMIENTO;
 
       if (drag.tipo === 'mover') {
         let nuevoInicio = snap(drag.inicioOriginal + deltaHoras);
         nuevoInicio = Math.max(0, Math.min(nuevoInicio, 24 - drag.duracion));
-        setDrag({ ...drag, currentInicio: nuevoInicio });
+        setDrag({ ...drag, currentInicio: nuevoInicio, moved: movidoAhora });
       } else if (drag.tipo === 'redimensionar-superior') {
         let nuevoInicio = snap(drag.inicioOriginal + deltaHoras);
         nuevoInicio = Math.max(0, Math.min(nuevoInicio, drag.finOriginal - 0.25));
-        setDrag({ ...drag, currentInicio: nuevoInicio });
+        setDrag({ ...drag, currentInicio: nuevoInicio, moved: movidoAhora });
       } else if (drag.tipo === 'redimensionar-inferior') {
         let nuevoFin = snap(drag.finOriginal + deltaHoras);
         nuevoFin = Math.max(drag.inicioOriginal + 0.25, Math.min(nuevoFin, 24));
-        setDrag({ ...drag, currentFin: nuevoFin });
+        setDrag({ ...drag, currentFin: nuevoFin, moved: movidoAhora });
       }
     };
 
@@ -760,7 +770,9 @@ export default function MiVistaSemanal({
           const esActivo = diaSeleccionado === dia;
           const info = obtenerInfoTurnoDelDia(dia);
           const d = new Date(dia + 'T00:00:00');
-          const esHoy = dia === new Date().toISOString().split('T')[0];
+          const ahoraLocal = new Date();
+          const hoyLocalStr = `${ahoraLocal.getFullYear()}-${String(ahoraLocal.getMonth() + 1).padStart(2, '0')}-${String(ahoraLocal.getDate()).padStart(2, '0')}`;
+          const esHoy = dia === hoyLocalStr;
           return (
             <div
               key={dia}

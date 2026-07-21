@@ -18,7 +18,14 @@ export default function ResumenEstadisticas({
   refresco?: number;
   fecha?: string;
 }) {
-  const fechaReferencia = fecha || new Date().toISOString().split('T')[0];
+  const fechaReferencia = fecha || (() => {
+    // Fecha local de hoy sin pasar por toISOString() (evita desfases de zona horaria)
+    const ahora = new Date();
+    const y = ahora.getFullYear();
+    const m = String(ahora.getMonth() + 1).padStart(2, '0');
+    const d = String(ahora.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  })();
   const [stats, setStats] = useState<Stats>({
     horasOcupadasHoy: 0,
     horasObjetivoDia: 24,
@@ -44,18 +51,26 @@ export default function ResumenEstadisticas({
           .gte('fecha_fin', `${hoyStr}T00:00:00Z`)
           .lte('fecha_inicio', `${hoyStr}T23:59:59Z`);
 
-        let horasOcupadas = 0;
+        // Guardamos cada tramo ocupado (turno y tareas) como [inicioDecimal, finDecimal]
+        // dentro del día (0-24h), y al final fusionamos los que se solapen, para no
+        // contar dos veces una hora en la que coinciden, por ejemplo, un turno y una
+        // tarea programada durante ese mismo turno.
+        const tramosOcupados: [number, number][] = [];
         let pendientes = 0;
+
+        const inicioDia = new Date(`${hoyStr}T00:00:00`);
+        const finDia = new Date(`${hoyStr}T23:59:59`);
+
         (tareasHoy || []).forEach((q: any) => {
           if (q.fecha_inicio && q.fecha_fin) {
             const inicio = new Date(q.fecha_inicio);
             const fin = new Date(q.fecha_fin);
-            const inicioDia = new Date(`${hoyStr}T00:00:00`);
-            const finDia = new Date(`${hoyStr}T23:59:59`);
             const intInicio = inicio < inicioDia ? inicioDia : inicio;
             const intFin = fin > finDia ? finDia : fin;
             if (intFin > intInicio) {
-              horasOcupadas += (intFin.getTime() - intInicio.getTime()) / 3600000;
+              const inicioDec = (intInicio.getTime() - inicioDia.getTime()) / 3600000;
+              const finDec = (intFin.getTime() - inicioDia.getTime()) / 3600000;
+              tramosOcupados.push([inicioDec, finDec]);
             }
           }
           if (!q.completado) pendientes += 1;
@@ -68,40 +83,69 @@ export default function ResumenEstadisticas({
           .eq('fecha', hoyStr)
           .maybeSingle();
 
-        let horasTrabajoHoy = 0;
+        // Turno de AYER: si fue de noche y cruza medianoche, parte de sus horas
+        // caen ya dentro del día de HOY (de 00:00 a su hora_fin).
+        // OJO: usamos new Date(hoyStr) (fecha "pelada", sin hora) y no
+        // new Date(`${hoyStr}T00:00:00`), porque esta última se interpreta en
+        // hora LOCAL y al hacer el .toISOString() de después puede desplazar
+        // el día según la zona horaria del navegador.
+        const fechaAyerObj = new Date(hoyStr);
+        fechaAyerObj.setDate(fechaAyerObj.getDate() - 1);
+        const fechaAyerStr = fechaAyerObj.toISOString().split('T')[0];
+
+        const { data: turnoAyer } = await supabase
+          .from('turnos_trabajo')
+          .select('*')
+          .eq('usuario_id', usuarioId)
+          .eq('fecha', fechaAyerStr)
+          .maybeSingle();
+
         if (turnoHoy && turnoHoy.tipo !== 'libre' && turnoHoy.tipo !== 'vacaciones' && turnoHoy.hora_inicio && turnoHoy.hora_fin) {
           const [hI, mI] = turnoHoy.hora_inicio.split(':').map(Number);
           const [hF, mF] = turnoHoy.hora_fin.split(':').map(Number);
-          let diff = (hF + mF / 60) - (hI + mI / 60);
-          if (diff < 0) diff += 24;
-          horasTrabajoHoy = diff;
-        }
+          const inicioDec = hI + mI / 60;
+          const finDec = hF + mF / 60;
 
-        const { data: perfil } = await supabase
-          .from('perfiles_usuario')
-          .select('*')
-          .eq('id', usuarioId)
-          .maybeSingle();
-
-        let horasObjetivo = 24;
-        if (perfil && turnoHoy && turnoHoy.tipo !== 'libre' && turnoHoy.tipo !== 'vacaciones') {
-          const camposPorTipo: Record<string, [string, string]> = {
-            mañana: ['h_inicio_manana', 'h_fin_manana'],
-            tarde: ['h_inicio_tarde', 'h_fin_tarde'],
-            noche: ['h_inicio_noche', 'h_fin_noche'],
-            partido: ['h_inicio_partido', 'h_fin_partido'],
-          };
-          const [campoI, campoF] = camposPorTipo[turnoHoy.tipo] || [];
-          if (campoI && campoF && perfil[campoI] && perfil[campoF]) {
-            const [hI, mI] = perfil[campoI].split(':').map(Number);
-            const [hF, mF] = perfil[campoF].split(':').map(Number);
-            let diff = (hF + mF / 60) - (hI + mI / 60);
-            if (diff < 0) diff += 24;
-            horasObjetivo = Math.min(diff, 8);
+          if (turnoHoy.tipo === 'noche' && finDec <= inicioDec) {
+            // Cruza medianoche: hoy solo cuenta la parte hasta las 24:00,
+            // el resto (de 00:00 a hora_fin) se contabiliza en el día siguiente
+            tramosOcupados.push([inicioDec, 24]);
           } else {
-            horasObjetivo = 8;
+            tramosOcupados.push([inicioDec, finDec]);
           }
         }
+
+        if (turnoAyer && turnoAyer.tipo === 'noche' && turnoAyer.hora_inicio && turnoAyer.hora_fin) {
+          const [hIA, mIA] = turnoAyer.hora_inicio.split(':').map(Number);
+          const [hFA, mFA] = turnoAyer.hora_fin.split(':').map(Number);
+          const inicioDecAyer = hIA + mIA / 60;
+          const finDecAyer = hFA + mFA / 60;
+          if (finDecAyer <= inicioDecAyer) {
+            // La parte del turno de ayer que ya cae en el día de hoy (00:00 -> hora_fin)
+            tramosOcupados.push([0, finDecAyer]);
+          }
+        }
+
+        // Fusionamos los tramos solapados y sumamos su duración total real
+        tramosOcupados.sort((a, b) => a[0] - b[0]);
+        let horasOcupadas = 0;
+        let tramoActual: [number, number] | null = null;
+        for (const tramo of tramosOcupados) {
+          if (!tramoActual) {
+            tramoActual = [...tramo];
+          } else if (tramo[0] <= tramoActual[1]) {
+            tramoActual[1] = Math.max(tramoActual[1], tramo[1]);
+          } else {
+            horasOcupadas += tramoActual[1] - tramoActual[0];
+            tramoActual = [...tramo];
+          }
+        }
+        if (tramoActual) horasOcupadas += tramoActual[1] - tramoActual[0];
+
+        // El "objetivo" del día son siempre las 24 horas completas del día,
+        // tengas o no turno asignado. Lo que varía es cuántas de esas 24
+        // horas están ya ocupadas (horasOcupadas, calculado arriba).
+        const horasObjetivo = 24;
 
         const { data: turnosVacaciones } = await supabase
           .from('turnos_trabajo')
@@ -115,7 +159,7 @@ export default function ResumenEstadisticas({
 
         if (!cancelado) {
           setStats({
-            horasOcupadasHoy: Math.round((horasOcupadas + horasTrabajoHoy) * 10) / 10,
+            horasOcupadasHoy: Math.round(horasOcupadas * 10) / 10,
             horasObjetivoDia: Math.round(horasObjetivo * 10) / 10,
             tareasPendientes: pendientes,
             diasVacacionesAno: diasVacaciones,

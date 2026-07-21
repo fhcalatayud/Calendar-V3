@@ -53,9 +53,12 @@ export default function MisTareasSemanales({
 
   const obtenerDiasSemana = (offset: number) => {
     const dias: string[] = [];
+    // Ancla local de "hoy" (evita desfases de zona horaria)
+    const ahora = new Date();
+    const hoyLocalStr = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`;
+    const base = new Date(hoyLocalStr);
     for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
+      const d = new Date(base);
       d.setDate(d.getDate() + offset * 7 + i);
       dias.push(d.toISOString().split('T')[0]);
     }
@@ -245,7 +248,8 @@ export default function MisTareasSemanales({
     return <div className="empty-state">Cargando tareas...</div>;
   }
 
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const ahoraLocal = new Date();
+  const hoyStr = `${ahoraLocal.getFullYear()}-${String(ahoraLocal.getMonth() + 1).padStart(2, '0')}-${String(ahoraLocal.getDate()).padStart(2, '0')}`;
 
   return (
     <div>
