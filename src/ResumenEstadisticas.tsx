@@ -97,7 +97,9 @@ export default function ResumenEstadisticas({
             const [hF, mF] = perfil[campoF].split(':').map(Number);
             let diff = (hF + mF / 60) - (hI + mI / 60);
             if (diff < 0) diff += 24;
-            horasObjetivo = diff;
+            horasObjetivo = Math.min(diff, 8);
+          } else {
+            horasObjetivo = 8;
           }
         }
 

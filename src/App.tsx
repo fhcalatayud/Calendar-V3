@@ -3,12 +3,14 @@ import { supabase } from './supabaseClient';
 import Login from './Login';
 import ConfiguracionPerfil from './ConfiguracionPerfil';
 import MiVistaSemanal from './MiVistaSemanal';
+import VistaCuadriculaSemanal from './VistaCuadriculaSemanal';
 import MisTareasSemanales from './MisTareasSemanales';
 import GestionEtiquetas from './GestionEtiquetas';
 import ResumenEstadisticas from './ResumenEstadisticas';
 import { useTheme } from './ThemeContext';
 
 type Tab = 'agenda' | 'tareas' | 'etiquetas';
+type VistaAgenda = 'dia' | 'semana';
 
 export default function App() {
   const { tema, toggleTema } = useTheme();
@@ -16,6 +18,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [vistaConfiguracion, setVistaConfiguracion] = useState(false);
   const [tabActiva, setTabActiva] = useState<Tab>('agenda');
+  const [vistaAgenda, setVistaAgenda] = useState<VistaAgenda>('dia');
   const [refrescoStats, setRefrescoStats] = useState(0);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<string>(
     () => new Date().toISOString().split('T')[0]
@@ -117,11 +120,57 @@ export default function App() {
         />
 
         {tabActiva === 'agenda' ? (
-          <MiVistaSemanal
-            usuarioId={session.user.id}
-            onCambio={dispararRefresco}
-            onFechaSeleccionada={setFechaSeleccionada}
-          />
+          <>
+            <div className="row" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'inline-flex', backgroundColor: 'var(--surface-subtle)', borderRadius: '999px', padding: '0.2rem' }}>
+                <button
+                  onClick={() => setVistaAgenda('dia')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderRadius: '999px',
+                    cursor: 'pointer',
+                    backgroundColor: vistaAgenda === 'dia' ? 'var(--primary)' : 'transparent',
+                    color: vistaAgenda === 'dia' ? '#fff' : 'var(--text-muted)',
+                    transition: 'background-color 0.2s, color 0.2s',
+                  }}
+                >
+                  📆 Día
+                </button>
+                <button
+                  onClick={() => setVistaAgenda('semana')}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderRadius: '999px',
+                    cursor: 'pointer',
+                    backgroundColor: vistaAgenda === 'semana' ? 'var(--primary)' : 'transparent',
+                    color: vistaAgenda === 'semana' ? '#fff' : 'var(--text-muted)',
+                    transition: 'background-color 0.2s, color 0.2s',
+                  }}
+                >
+                  🗓️ Semana
+                </button>
+              </div>
+            </div>
+            {vistaAgenda === 'dia' ? (
+              <MiVistaSemanal
+                usuarioId={session.user.id}
+                onCambio={dispararRefresco}
+                onFechaSeleccionada={setFechaSeleccionada}
+              />
+            ) : (
+              <VistaCuadriculaSemanal
+                usuarioId={session.user.id}
+                onCambio={dispararRefresco}
+                onFechaSeleccionada={setFechaSeleccionada}
+              />
+            )}
+          </>
         ) : tabActiva === 'tareas' ? (
           <MisTareasSemanales
             usuarioId={session.user.id}
