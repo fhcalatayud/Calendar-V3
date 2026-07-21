@@ -19,10 +19,7 @@ export default function Login() {
         if (error) throw error;
         setMensaje('¡Registro con éxito! Ya puedes iniciar sesión.');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (error: any) {
@@ -33,130 +30,83 @@ export default function Login() {
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-page)',
-        fontFamily: 'sans-serif',
-        padding: '1rem',
-      }}
-    >
+    <div className="full-screen-center">
       <div
+        className="card"
         style={{
           width: '100%',
-          maxWidth: '400px',
-          padding: '2rem',
-          backgroundColor: 'var(--surface)',
-          borderRadius: '0.75rem',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-          border: '1px solid var(--border)',
+          maxWidth: '380px',
+          padding: '1.75rem 1.5rem',
         }}
       >
-        <h2
-          style={{
-            textAlign: 'center',
-            fontSize: '1.5rem',
-            fontWeight: 'bold',
-            color: 'var(--text-primary)',
-            marginBottom: '2rem',
-          }}
-        >
-          {isRegister
-            ? 'Crea tu cuenta de Agenda'
-            : 'Inicia sesión en tu Agenda'}
-        </h2>
+        <div className="center" style={{ marginBottom: '1.75rem' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📅</div>
+          <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {isRegister ? 'Crea tu cuenta' : 'Mi Agenda'}
+          </h2>
+          <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
+            {isRegister ? 'Regístrate para empezar' : 'Inicia sesión para continuar'}
+          </p>
+        </div>
 
-        <form
-          onSubmit={registrarOIniciar}
-          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-        >
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
-          >
-            <input
-              type="email"
-              required
-              placeholder="Correo electrónico"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.75rem',
-                border: '1px solid var(--border)',
-                borderRadius: '0.375rem',
-                boxSizing: 'border-box',
-              }}
-            />
-            <input
-              type="password"
-              required
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.75rem',
-                border: '1px solid var(--border)',
-                borderRadius: '0.375rem',
-                boxSizing: 'border-box',
-              }}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '0.625rem',
-              backgroundColor: '#4f46e5',
-              color: 'var(--surface)',
-              border: 'none',
-              borderRadius: '0.375rem',
-              fontWeight: '500',
-              cursor: 'pointer',
-              marginTop: '1rem',
-            }}
-          >
+        <form onSubmit={registrarOIniciar} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <input
+            type="email"
+            required
+            placeholder="Correo electrónico"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input"
+            autoComplete="email"
+          />
+          <input
+            type="password"
+            required
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="input"
+            autoComplete={isRegister ? 'new-password' : 'current-password'}
+          />
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading} style={{ marginTop: '0.5rem' }}>
             {loading ? 'Procesando...' : isRegister ? 'Registrarse' : 'Entrar'}
           </button>
         </form>
 
         {mensaje && (
           <div
+            className="center"
             style={{
-              fontSize: '0.875rem',
-              textAlign: 'center',
+              fontSize: '0.82rem',
               color: 'var(--text-muted)',
               marginTop: '1rem',
               backgroundColor: 'var(--surface-subtle)',
-              padding: '0.5rem',
-              borderRadius: '0.375rem',
+              padding: '0.6rem',
+              borderRadius: 'var(--radius-sm)',
             }}
           >
             {mensaje}
           </div>
         )}
 
-        <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+        <div className="center" style={{ marginTop: '1.25rem' }}>
           <button
             type="button"
-            onClick={() => setIsRegister(!isRegister)}
+            onClick={() => {
+              setIsRegister(!isRegister);
+              setMensaje('');
+            }}
             style={{
               background: 'none',
               border: 'none',
-              color: '#4f46e5',
+              color: 'var(--primary)',
               textDecoration: 'underline',
               cursor: 'pointer',
-              fontSize: '0.875rem',
+              fontSize: '0.85rem',
+              padding: 0,
             }}
           >
-            {isRegister
-              ? '¿Ya tienes cuenta? Inicia sesión'
-              : '¿No tienes cuenta? Regístrate'}
+            {isRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate'}
           </button>
         </div>
       </div>

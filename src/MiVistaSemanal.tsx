@@ -11,8 +11,8 @@ type DragState =
       finOriginal: number;
       duracion: number;
       startY: number;
-      gridTop: number;
       currentInicio: number;
+      moved: boolean;
     }
   | {
       tipo: 'redimensionar-superior';
@@ -20,8 +20,8 @@ type DragState =
       inicioOriginal: number;
       finOriginal: number;
       startY: number;
-      gridTop: number;
       currentInicio: number;
+      moved: boolean;
     }
   | {
       tipo: 'redimensionar-inferior';
@@ -29,15 +29,15 @@ type DragState =
       inicioOriginal: number;
       finOriginal: number;
       startY: number;
-      gridTop: number;
       currentFin: number;
+      moved: boolean;
     }
   | {
       tipo: 'crear';
       startY: number;
-      gridTop: number;
       currentInicio: number;
       currentFin: number;
+      moved: boolean;
     };
 
 type ConfirmPendiente = {
@@ -48,9 +48,21 @@ type ConfirmPendiente = {
   alConfirmar: () => Promise<void> | void;
 } | null;
 
-const UMBRAL_MOVIMIENTO = 5;
+const UMBRAL_MOVIMIENTO = 8;
+const HORA_INICIO = 0;
+const HORA_FIN = 23;
+const ALTURA_FILA = 48;
+const HORA_LABEL_W = 52;
 
-export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionada }: { usuarioId: string; onCambio?: () => void; onFechaSeleccionada?: (fecha: string) => void }) {
+export default function MiVistaSemanal({
+  usuarioId,
+  onCambio,
+  onFechaSeleccionada,
+}: {
+  usuarioId: string;
+  onCambio?: () => void;
+  onFechaSeleccionada?: (fecha: string) => void;
+}) {
   const [misTurnos, setMisTurnos] = useState<any[]>([]);
   const [diasSemana, setDiasSemana] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,24 +75,18 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [quehaceres, setQuehaceres] = useState<any[]>([]);
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
 
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
+  const [mostrarPanelTurno, setMostrarPanelTurno] = useState(false);
 
   const [nuevaTarea, setNuevaTarea] = useState('');
   const [qFechaHoraInicio, setQFechaHoraInicio] = useState('');
   const [qFechaHoraFin, setQFechaHoraFin] = useState('');
   const [qEtiquetaId, setQEtiquetaId] = useState('');
-
-  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
-
   const [eventoEditando, setEventoEditando] = useState<any | null>(null);
 
-  const HORA_INICIO_CALENDARIO = 0;
-  const HORA_FIN_CALENDARIO = 23;
-  const ALTURA_FILA = 50;
-
-  // --- Estado de arrastre ---
   const gridRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [confirmPendiente, setConfirmPendiente] = useState<ConfirmPendiente>(null);
@@ -88,9 +94,14 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
   const papeleraRef = useRef<HTMLDivElement>(null);
 
   const rangoHoras = Array.from(
-    { length: HORA_FIN_CALENDARIO - HORA_INICIO_CALENDARIO + 1 },
-    (_, i) => i + HORA_INICIO_CALENDARIO
+    { length: HORA_FIN - HORA_INICIO + 1 },
+    (_, i) => i + HORA_INICIO
   );
+
+  const NOMBRES_MESES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
 
   const cargarDatos = async (dias: string[]) => {
     try {
@@ -148,53 +159,29 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
     if (diaSeleccionado) onFechaSeleccionada?.(diaSeleccionado);
   }, [diaSeleccionado]);
 
-  const irDiaAnterior = () => {
+  const irDia = (delta: number) => {
     const d = new Date(fechaBase);
-    d.setDate(d.getDate() - 1);
+    d.setDate(d.getDate() + delta);
     setFechaBase(d);
   };
-
-  const irDiaSiguiente = () => {
-    const d = new Date(fechaBase);
-    d.setDate(d.getDate() + 1);
-    setFechaBase(d);
-  };
-
-  const irSemanaAnterior = () => {
-    const d = new Date(fechaBase);
-    d.setDate(d.getDate() - 7);
-    setFechaBase(d);
-  };
-
-  const irSemanaSiguiente = () => {
-    const d = new Date(fechaBase);
-    d.setDate(d.getDate() + 7);
-    setFechaBase(d);
-  };
-
+  const irSemana = (delta: number) => irDia(delta * 7);
   const irHoy = () => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
     setFechaBase(hoy);
   };
 
-  const NOMBRES_MESES = [
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-  ];
-
-  const anioActual = new Date().getFullYear();
-  const rangoAnios = Array.from({ length: 11 }, (_, i) => anioActual - 5 + i);
-
   const cambiarMes = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nuevoMes = parseInt(e.target.value, 10);
     setFechaBase(new Date(fechaBase.getFullYear(), nuevoMes, 1));
   };
-
   const cambiarAnio = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nuevoAnio = parseInt(e.target.value, 10);
     setFechaBase(new Date(nuevoAnio, fechaBase.getMonth(), 1));
   };
+
+  const anioActual = new Date().getFullYear();
+  const rangoAnios = Array.from({ length: 11 }, (_, i) => anioActual - 5 + i);
 
   const formatearFechaLocal = (fecha: Date) => {
     const tzOffset = fecha.getTimezoneOffset() * 60000;
@@ -203,23 +190,15 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
   const clickHuecoVacio = (hora: number) => {
     if (!diaSeleccionado) return;
-
     const fechaInicio = new Date(
       `${diaSeleccionado}T${String(hora).padStart(2, '0')}:00:00`
     );
     const fechaFin = new Date(fechaInicio.getTime() + 60 * 60 * 1000);
-
     setQFechaHoraInicio(formatearFechaLocal(fechaInicio));
     setQFechaHoraFin(formatearFechaLocal(fechaFin));
     setNuevaTarea('');
+    setQEtiquetaId('');
     setMostrarModalCrear(true);
-  };
-
-  const HORAS_POR_DEFECTO: Record<string, [string, string]> = {
-    mañana: ['07:00', '15:00'],
-    tarde: ['15:00', '23:00'],
-    noche: ['22:00', '06:00'],
-    partido: ['09:00', '18:00'],
   };
 
   const CAMPOS_PERFIL_POR_TIPO: Record<string, [string, string]> = {
@@ -227,6 +206,12 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
     tarde: ['h_inicio_tarde', 'h_fin_tarde'],
     noche: ['h_inicio_noche', 'h_fin_noche'],
     partido: ['h_inicio_partido', 'h_fin_partido'],
+  };
+  const HORAS_POR_DEFECTO: Record<string, [string, string]> = {
+    mañana: ['07:00', '15:00'],
+    tarde: ['15:00', '23:00'],
+    noche: ['22:00', '06:00'],
+    partido: ['09:00', '18:00'],
   };
 
   const guardarTurnoTrabajo = async (tipoTurno: string) => {
@@ -241,12 +226,9 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
           .select('*')
           .eq('id', usuarioId)
           .maybeSingle();
-
         if (errorPerfil) throw errorPerfil;
-
         const [campoInicio, campoFin] = CAMPOS_PERFIL_POR_TIPO[tipoTurno] || [];
         const [defInicio, defFin] = HORAS_POR_DEFECTO[tipoTurno] || ['00:00', '00:00'];
-
         horaInicio = (campoInicio && perfil?.[campoInicio]?.substring(0, 5)) || defInicio;
         horaFin = (campoFin && perfil?.[campoFin]?.substring(0, 5)) || defFin;
       }
@@ -261,8 +243,8 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
         },
         { onConflict: 'usuario_id,fecha' }
       );
-
       if (error) throw error;
+      setMostrarPanelTurno(false);
       await cargarDatos(diasSemana);
       onCambio?.();
     } catch (err: any) {
@@ -273,12 +255,10 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
   const agregarQuehacer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevaTarea.trim() || !qFechaHoraInicio || !qFechaHoraFin) return;
-
     if (new Date(qFechaHoraFin) < new Date(qFechaHoraInicio)) {
-      alert('Error: La fecha de finalización no puede ser anterior a la de inicio.');
+      alert('La fecha de fin no puede ser anterior a la de inicio.');
       return;
     }
-
     try {
       const { error } = await supabase.from('quehaceres_diarios').insert({
         usuario_id: usuarioId,
@@ -289,10 +269,7 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
         completado: false,
         etiqueta_id: qEtiquetaId || null,
       });
-
       if (error) throw error;
-      setNuevaTarea('');
-      setQEtiquetaId('');
       setMostrarModalCrear(false);
       await cargarDatos(diasSemana);
       onCambio?.();
@@ -303,19 +280,11 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
   const actualizarQuehacer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !eventoEditando ||
-      !eventoEditando.tarea.trim() ||
-      !eventoEditando.fecha_inicio ||
-      !eventoEditando.fecha_fin
-    )
-      return;
-
+    if (!eventoEditando || !eventoEditando.tarea.trim()) return;
     if (new Date(eventoEditando.fecha_fin) < new Date(eventoEditando.fecha_inicio)) {
-      alert('Error: La fecha de finalización no puede ser anterior.');
+      alert('La fecha de fin no puede ser anterior.');
       return;
     }
-
     try {
       const { error } = await supabase
         .from('quehaceres_diarios')
@@ -327,23 +296,22 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
           etiqueta_id: eventoEditando.etiqueta_id || null,
         })
         .eq('id', eventoEditando.id);
-
       if (error) throw error;
       setEventoEditando(null);
       setMostrarModalEditar(false);
       await cargarDatos(diasSemana);
       onCambio?.();
     } catch (err: any) {
-      alert('Error actualizando evento: ' + err.message);
+      alert('Error actualizando: ' + err.message);
     }
   };
 
-  const eliminarQuehacer = async (id: string) => {
+  const eliminarQuehacer = (id: string) => {
     setConfirmPendiente({
       titulo: 'Eliminar actividad',
-      mensaje: '¿Seguro que quieres eliminar este evento? Esta acción no se puede deshacer.',
+      mensaje: '¿Seguro que quieres eliminar este evento? No se puede deshacer.',
       textoConfirmar: 'Eliminar',
-      colorConfirmar: '#dc2626',
+      colorConfirmar: 'var(--error)',
       alConfirmar: async () => {
         try {
           await supabase.from('quehaceres_diarios').delete().eq('id', id);
@@ -369,7 +337,6 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       const tzOffset = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
     };
-
     setEventoEditando({
       id: q.id,
       tarea: q.tarea,
@@ -382,54 +349,37 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
   const obtenerEstiloTurno = (tipo: string) => {
     switch (tipo) {
-      case 'mañana':
-        return { bg: '#e0e7ff', border: '#4338ca', text: '#4338ca', emoji: '🌅' };
-      case 'tarde':
-        return { bg: '#fef3c7', border: '#b45309', text: '#b45309', emoji: '🌆' };
-      case 'noche':
-        return { bg: '#1e1b4b', border: '#fff', text: '#fff', emoji: '🌃' };
-      case 'partido':
-        return { bg: '#ccfbf1', border: '#0f766e', text: '#0f766e', emoji: '💼' };
-      case 'libre':
-        return { bg: '#d1fae5', border: '#065f46', text: '#065f46', emoji: '🟢' };
-      case 'vacaciones':
-        return { bg: '#ffe4e6', border: '#9f1239', text: '#9f1239', emoji: '✈️' };
-      default:
-        return { bg: 'var(--surface)', border: 'var(--text-muted)', text: 'var(--text-muted)', emoji: '❓' };
+      case 'mañana': return { bg: 'var(--primary-bg)', border: 'var(--primary-700)', text: 'var(--primary-700)', emoji: '🌅', chip: '#e0e7ff' };
+      case 'tarde': return { bg: 'var(--warning-bg)', border: 'var(--warning)', text: 'var(--warning)', emoji: '🌆', chip: '#fef3c7' };
+      case 'noche': return { bg: '#1e1b4b', border: '#fff', text: '#fff', emoji: '🌃', chip: '#312e81' };
+      case 'partido': return { bg: 'var(--info-bg)', border: 'var(--info)', text: 'var(--info)', emoji: '💼', chip: '#ccfbf1' };
+      case 'libre': return { bg: 'var(--success-bg)', border: 'var(--success)', text: 'var(--success)', emoji: '🟢', chip: '#d1fae5' };
+      case 'vacaciones': return { bg: 'var(--error-bg)', border: 'var(--error)', text: 'var(--error)', emoji: '✈️', chip: '#ffe4e6' };
+      default: return { bg: 'var(--surface)', border: 'var(--text-muted)', text: 'var(--text-muted)', emoji: '❓', chip: 'var(--surface-subtle)' };
     }
   };
 
   const obtenerInfoTurnoDelDia = (dia: string) => {
     const turnoPropio = misTurnos.find((t) => t.fecha === dia);
     if (turnoPropio && turnoPropio.tipo !== 'libre') {
-      return { texto: turnoPropio.tipo.toUpperCase(), estilo: obtenerEstiloTurno(turnoPropio.tipo) };
+      return { texto: turnoPropio.tipo, estilo: obtenerEstiloTurno(turnoPropio.tipo) };
     }
-
     const fechaAyer = new Date(dia);
     fechaAyer.setDate(fechaAyer.getDate() - 1);
     const diaAyerStr = fechaAyer.toISOString().split('T')[0];
     const turnoAyer = misTurnos.find((t) => t.fecha === diaAyerStr);
-
     if (turnoAyer && turnoAyer.tipo === 'noche') {
       const [hInicio] = turnoAyer.hora_inicio.split(':').map(Number);
       const [hFin] = turnoAyer.hora_fin.split(':').map(Number);
       if (hFin < hInicio) {
-        return {
-          texto: 'SALIDA NOCHE',
-          estilo: { bg: 'var(--surface-subtle)', text: 'var(--text-muted)', border: '#94a3b8', emoji: '🌃' },
-        };
+        return { texto: 'noche', estilo: obtenerEstiloTurno('noche') };
       }
     }
-
-    return {
-      texto: 'SIN TURNO',
-      estilo: { bg: '#fff', text: 'var(--text-muted)', border: 'var(--border)', emoji: '' },
-    };
+    return null;
   };
 
   const procesarEventosDelDia = () => {
     if (!diaSeleccionado) return [];
-
     const eventos: any[] = [];
     const inicioDiaVisual = new Date(`${diaSeleccionado}T00:00:00`);
     const finDiaVisual = new Date(`${diaSeleccionado}T23:59:59`);
@@ -437,15 +387,14 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
     const turnoHoy = misTurnos.find((t) => t.fecha === diaSeleccionado);
     if (turnoHoy && turnoHoy.tipo !== 'libre' && turnoHoy.tipo !== 'vacaciones') {
       const [hInicio, mInicio] = turnoHoy.hora_inicio.split(':').map(Number);
-      let [hFin, mFin] = turnoHoy.hora_fin.split(':').map(Number);
-      const esTurnoCruzaMedianoche = hFin < hInicio;
-
+      const [hFin, mFin] = turnoHoy.hora_fin.split(':').map(Number);
+      const cruza = hFin < hInicio;
       eventos.push({
         id: 'turno-hoy',
-        titulo: `TURNO ${turnoHoy.tipo.toUpperCase()}`,
+        titulo: `Turno ${turnoHoy.tipo}`,
         subtitulo: `${turnoHoy.hora_inicio.substring(0, 5)} - ${turnoHoy.hora_fin.substring(0, 5)}`,
         inicioDecimal: hInicio + mInicio / 60,
-        finDecimal: esTurnoCruzaMedianoche ? 24 : hFin + mFin / 60,
+        finDecimal: cruza ? 24 : hFin + mFin / 60,
         esTrabajo: true,
         estilo: obtenerEstiloTurno(turnoHoy.tipo),
       });
@@ -455,16 +404,14 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
     fechaAyer.setDate(fechaAyer.getDate() - 1);
     const diaAyerStr = fechaAyer.toISOString().split('T')[0];
     const turnoAyer = misTurnos.find((t) => t.fecha === diaAyerStr);
-
     if (turnoAyer && turnoAyer.tipo === 'noche') {
       const [hInicioAyer] = turnoAyer.hora_inicio.split(':').map(Number);
       const [hFinAyer, mFinAyer] = turnoAyer.hora_fin.split(':').map(Number);
-
       if (hFinAyer < hInicioAyer) {
         eventos.push({
           id: 'turno-ayer-continuacion',
-          titulo: `FIN TURNO NOCHE`,
-          subtitulo: `Viene de ayer hasta las ${turnoAyer.hora_fin.substring(0, 5)}`,
+          titulo: 'Fin turno noche',
+          subtitulo: `Hasta ${turnoAyer.hora_fin.substring(0, 5)}`,
           inicioDecimal: 0,
           finDecimal: hFinAyer + mFinAyer / 60,
           esTrabajo: true,
@@ -475,37 +422,26 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
     quehaceres.forEach((q) => {
       if (!q.fecha_inicio || !q.fecha_fin) return;
-
       const evInicio = new Date(q.fecha_inicio);
       const evFin = new Date(q.fecha_fin);
-
       if (evInicio <= finDiaVisual && evFin >= inicioDiaVisual) {
-        const interseccionInicio = evInicio < inicioDiaVisual ? inicioDiaVisual : evInicio;
-        const interseccionFin = evFin > finDiaVisual ? finDiaVisual : evFin;
-
-        const hInicio = interseccionInicio.getHours() + interseccionInicio.getMinutes() / 60;
-        const hFin = interseccionFin.getHours() + interseccionFin.getMinutes() / 60;
-
-        let flag = '';
-        if (evInicio < inicioDiaVisual) flag += '⏳ Viene de... ';
-        if (evFin > finDiaVisual) flag += ' ➡️ Sigue...';
-
+        const intInicio = evInicio < inicioDiaVisual ? inicioDiaVisual : evInicio;
+        const intFin = evFin > finDiaVisual ? finDiaVisual : evFin;
+        const hInicio = intInicio.getHours() + intInicio.getMinutes() / 60;
+        const hFin = intFin.getHours() + intFin.getMinutes() / 60;
         const etiqueta = etiquetas.find((et) => et.id === q.etiqueta_id);
-
         eventos.push({
           id: q.id,
           titulo: q.tarea,
-          subtitulo:
-            flag ||
-            `${interseccionInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} - ${interseccionFin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
+          subtitulo: `${intInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} - ${intFin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`,
           inicioDecimal: hInicio,
           finDecimal: hFin,
           esTrabajo: false,
           completado: q.completado,
           estilo: {
-            bg: q.completado ? '#f0fdf4' : '#eff6ff',
-            border: etiqueta ? etiqueta.color : '#3b82f6',
-            text: q.completado ? '#166534' : '#1e40af',
+            bg: q.completado ? 'var(--success-bg)' : 'var(--primary-bg)',
+            border: etiqueta ? etiqueta.color : 'var(--primary)',
+            text: q.completado ? 'var(--success)' : 'var(--primary-700)',
             emoji: q.completado ? '✅' : '🎯',
           },
           etiquetaNombre: etiqueta?.nombre,
@@ -515,14 +451,13 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
     });
 
     eventos.sort((a, b) => a.inicioDecimal - b.inicioDecimal);
-
     const columnas: any[][] = [];
     eventos.forEach((evento) => {
       let puesto = false;
       for (let i = 0; i < columnas.length; i++) {
-        const ultimaCol = columnas[i];
-        if (evento.inicioDecimal >= ultimaCol[ultimaCol.length - 1].finDecimal) {
-          ultimaCol.push(evento);
+        const col = columnas[i];
+        if (evento.inicioDecimal >= col[col.length - 1].finDecimal) {
+          col.push(evento);
           puesto = true;
           break;
         }
@@ -530,25 +465,18 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       if (!puesto) columnas.push([evento]);
     });
 
-    const eventosPosicionados: any[] = [];
-    const totalColumnas = columnas.length;
-
-    columnas.forEach((columna, indiceColumna) => {
-      columna.forEach((evento) => {
-        const inicioEfectivo = Math.max(HORA_INICIO_CALENDARIO, Math.min(evento.inicioDecimal, HORA_FIN_CALENDARIO + 1));
-        const finEfectivo = Math.max(inicioEfectivo, Math.min(evento.finDecimal, HORA_FIN_CALENDARIO + 1));
-
-        const top = (inicioEfectivo - HORA_INICIO_CALENDARIO) * ALTURA_FILA;
-        const height = Math.max(35, (finEfectivo - inicioEfectivo) * ALTURA_FILA);
-
-        const width = 100 / totalColumnas;
-        const left = indiceColumna * width;
-
-        eventosPosicionados.push({ ...evento, top, height, width, left });
+    const posicionados: any[] = [];
+    const total = columnas.length;
+    columnas.forEach((col, idx) => {
+      col.forEach((evento) => {
+        const ini = Math.max(HORA_INICIO, Math.min(evento.inicioDecimal, HORA_FIN + 1));
+        const fin = Math.max(ini, Math.min(evento.finDecimal, HORA_FIN + 1));
+        const top = (ini - HORA_INICIO) * ALTURA_FILA;
+        const height = Math.max(32, (fin - ini) * ALTURA_FILA);
+        posicionados.push({ ...evento, top, height, width: 100 / total, left: (idx * 100) / total });
       });
     });
-
-    return eventosPosicionados;
+    return posicionados;
   };
 
   const toggleCompletado = async (id: string, completado: boolean) => {
@@ -557,7 +485,7 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       .update({ completado: !completado })
       .eq('id', id);
     if (error) {
-      alert('Error al actualizar: ' + error.message);
+      alert('Error: ' + error.message);
       return;
     }
     await cargarDatos(diasSemana);
@@ -566,31 +494,25 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
   const eventosDelDia = procesarEventosDelDia();
 
-  // --- Utilidades de arrastre ---
   const snap = (h: number) => Math.round(h * 4) / 4;
-
-  const yADecimal = (yRelativa: number) =>
-    snap(yRelativa / ALTURA_FILA + HORA_INICIO_CALENDARIO);
-
+  const yADecimal = (yRel: number) => snap(yRel / ALTURA_FILA + HORA_INICIO);
   const decimalAHoraStr = (d: number) => {
     const h = Math.floor(d);
     const m = Math.round((d - h) * 60);
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
-
   const construirFechaHora = (diaStr: string, decimal: number) => {
     const h = Math.floor(decimal);
     const m = Math.round((decimal - h) * 60);
     return new Date(`${diaStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
   };
 
-  // Inicia arrastre de movimiento sobre un evento
-  const iniciarMovimiento = (e: React.MouseEvent, ev: any) => {
+  // Pointer-based drag (works for touch + mouse)
+  const iniciarMovimiento = (e: React.PointerEvent, ev: any) => {
     if (ev.esTrabajo) return;
     e.preventDefault();
     e.stopPropagation();
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag({
       tipo: 'mover',
       eventoId: ev.id,
@@ -598,68 +520,47 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       finOriginal: ev.finDecimal,
       duracion: ev.finDecimal - ev.inicioDecimal,
       startY: e.clientY,
-      gridTop: rect.top,
       currentInicio: ev.inicioDecimal,
+      moved: false,
     });
   };
 
-  const iniciarResize = (e: React.MouseEvent, ev: any, borde: 'superior' | 'inferior') => {
+  const iniciarResize = (e: React.PointerEvent, ev: any, borde: 'superior' | 'inferior') => {
     if (ev.esTrabajo) return;
     e.preventDefault();
     e.stopPropagation();
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag(
       borde === 'superior'
-        ? {
-            tipo: 'redimensionar-superior',
-            eventoId: ev.id,
-            inicioOriginal: ev.inicioDecimal,
-            finOriginal: ev.finDecimal,
-            startY: e.clientY,
-            gridTop: rect.top,
-            currentInicio: ev.inicioDecimal,
-          }
-        : {
-            tipo: 'redimensionar-inferior',
-            eventoId: ev.id,
-            inicioOriginal: ev.inicioDecimal,
-            finOriginal: ev.finDecimal,
-            startY: e.clientY,
-            gridTop: rect.top,
-            currentFin: ev.finDecimal,
-          }
+        ? { tipo: 'redimensionar-superior', eventoId: ev.id, inicioOriginal: ev.inicioDecimal, finOriginal: ev.finDecimal, startY: e.clientY, currentInicio: ev.inicioDecimal, moved: false }
+        : { tipo: 'redimensionar-inferior', eventoId: ev.id, inicioOriginal: ev.inicioDecimal, finOriginal: ev.finDecimal, startY: e.clientY, currentFin: ev.finDecimal, moved: false }
     );
   };
 
-  const iniciarCreacion = (e: React.MouseEvent) => {
+  const iniciarCreacion = (e: React.PointerEvent) => {
     if (!diaSeleccionado) return;
     const rect = gridRef.current?.getBoundingClientRect();
     if (!rect) return;
     const yRelativa = e.clientY - rect.top;
     const decimal = yADecimal(yRelativa);
-    setDrag({
-      tipo: 'crear',
-      startY: e.clientY,
-      gridTop: rect.top,
-      currentInicio: decimal,
-      currentFin: decimal + 0.25,
-    });
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    setDrag({ tipo: 'crear', startY: e.clientY, currentInicio: decimal, currentFin: decimal + 0.25, moved: false });
   };
 
   useEffect(() => {
     if (!drag) return;
 
-    const manejarMove = (e: MouseEvent) => {
+    const manejarMove = (e: PointerEvent) => {
       if (drag.tipo === 'crear') {
-        const yRel = e.clientY - drag.gridTop;
-        const inicio = Math.min(yADecimal(drag.startY - drag.gridTop), yADecimal(yRel));
-        const fin = Math.max(yADecimal(drag.startY - drag.gridTop), yADecimal(yRel));
-        setDrag({ ...drag, currentInicio: inicio, currentFin: Math.max(fin, inicio + 0.25) });
+        const rect = gridRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const yRel = e.clientY - rect.top;
+        const inicio = Math.min(yADecimal(drag.startY - rect.top), yADecimal(yRel));
+        const fin = Math.max(yADecimal(drag.startY - rect.top), yADecimal(yRel));
+        setDrag({ ...drag, currentInicio: inicio, currentFin: Math.max(fin, inicio + 0.25), moved: true });
         return;
       }
 
-      // Detectar papelera
       const pr = papeleraRef.current?.getBoundingClientRect();
       if (pr) {
         const dentro = e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom;
@@ -667,6 +568,10 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       }
 
       const deltaHoras = (e.clientY - drag.startY) / ALTURA_FILA;
+      if (Math.abs(e.clientY - drag.startY) > UMBRAL_MOVIMIENTO && !drag.moved) {
+        setDrag({ ...drag, moved: true });
+      }
+
       if (drag.tipo === 'mover') {
         let nuevoInicio = snap(drag.inicioOriginal + deltaHoras);
         nuevoInicio = Math.max(0, Math.min(nuevoInicio, 24 - drag.duracion));
@@ -682,37 +587,28 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       }
     };
 
-    const manejarUp = (e: MouseEvent) => {
-      const movimiento = Math.abs(e.clientY - drag.startY);
+    const manejarUp = (e: PointerEvent) => {
       const pr = papeleraRef.current?.getBoundingClientRect();
-      const enPapelera =
-        pr !== undefined &&
-        e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom;
+      const enPapelera = pr !== undefined && e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom;
 
-      if (drag.tipo === 'mover' && movimiento < UMBRAL_MOVIMIENTO) {
-        // Fue clic, no arrastre: abrir edición
+      if (drag.tipo === 'mover' && !drag.moved) {
         const ev = eventosDelDia.find((x) => x.id === drag.eventoId);
         if (ev) iniciarEdicion(ev.datosOriginales);
         setDrag(null);
         setSobrePapelera(false);
         return;
       }
-
       if (drag.tipo === 'mover' && enPapelera) {
         eliminarQuehacer(drag.eventoId);
         setDrag(null);
         setSobrePapelera(false);
         return;
       }
-
-      if (drag.tipo === 'crear' && movimiento < UMBRAL_MOVIMIENTO) {
-        // Clic simple: crear evento de 1h en esa posición
-        const inicio = drag.currentInicio;
-        clickHuecoVacio(Math.floor(inicio));
+      if (drag.tipo === 'crear' && !drag.moved) {
+        clickHuecoVacio(Math.floor(drag.currentInicio));
         setDrag(null);
         return;
       }
-
       if (drag.tipo === 'crear') {
         const inicio = drag.currentInicio;
         const fin = drag.currentFin;
@@ -720,9 +616,9 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
         const fechaFin = construirFechaHora(diaSeleccionado!, fin);
         setConfirmPendiente({
           titulo: 'Crear nueva actividad',
-          mensaje: `Se creará un nuevo evento el ${new Date(diaSeleccionado! + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })} de ${decimalAHoraStr(inicio)} a ${decimalAHoraStr(fin)}.\n\n¿Quieres crearlo ahora?`,
+          mensaje: `Crear evento el ${new Date(diaSeleccionado! + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })} de ${decimalAHoraStr(inicio)} a ${decimalAHoraStr(fin)}.`,
           textoConfirmar: 'Crear evento',
-          colorConfirmar: '#2563eb',
+          colorConfirmar: 'var(--primary)',
           alConfirmar: async () => {
             try {
               const { error } = await supabase.from('quehaceres_diarios').insert({
@@ -747,7 +643,6 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
         return;
       }
 
-      // mover o redimensionar: confirmar antes de guardar
       let nuevoInicio = drag.inicioOriginal;
       let nuevoFin = drag.finOriginal;
       if (drag.tipo === 'mover') {
@@ -763,31 +658,18 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
 
       const evOriginal = quehaceres.find((q) => q.id === drag.eventoId);
       if (evOriginal) {
-        const duracionOriginalMs = new Date(evOriginal.fecha_fin).getTime() - new Date(evOriginal.fecha_inicio).getTime();
-        const evInicioOriginal = new Date(evOriginal.fecha_inicio);
-        const evFinOriginal = new Date(evOriginal.fecha_fin);
-        const offsetInicioOriginal = evInicioOriginal.getTime() - new Date(`${diaSeleccionado}T00:00:00`).getTime();
-        const offsetFinOriginal = evFinOriginal.getTime() - new Date(`${diaSeleccionado}T00:00:00`).getTime();
+        const duracionMs = new Date(evOriginal.fecha_fin).getTime() - new Date(evOriginal.fecha_inicio).getTime();
+        const fechaInicioFinal = construirFechaHora(diaSeleccionado!, nuevoInicio);
+        const fechaFinFinal = drag.tipo === 'mover'
+          ? new Date(fechaInicioFinal.getTime() + duracionMs)
+          : construirFechaHora(diaSeleccionado!, nuevoFin);
 
-        const nuevoInicioMs = offsetInicioOriginal + (nuevoInicio - drag.inicioOriginal) * 3600000;
-        const nuevoFinMs = offsetFinOriginal + (nuevoFin - drag.finOriginal) * 3600000;
-
-        const nuevaFechaInicio = new Date(evInicioOriginal.getTime() + nuevoInicioMs - offsetInicioOriginal);
-        const nuevaFechaFin = new Date(evFinOriginal.getTime() + nuevoFinMs - offsetFinOriginal);
-
-        // Mantener duración original si es mover
-        let fechaInicioFinal = nuevaFechaInicio;
-        let fechaFinFinal = nuevaFechaFin;
-        if (drag.tipo === 'mover') {
-          fechaFinFinal = new Date(fechaInicioFinal.getTime() + duracionOriginalMs);
-        }
-
-        const accion = drag.tipo === 'mover' ? 'mover' : 'redimensionar';
+        const accion = drag.tipo === 'mover' ? 'Mover' : 'Redimensionar';
         setConfirmPendiente({
-          titulo: accion === 'mover' ? 'Mover actividad' : 'Cambiar duración',
-          mensaje: `${accion === 'mover' ? 'Mover' : 'Redimensionar'} "${evOriginal.tarea}" a ${decimalAHoraStr(nuevoInicio)} - ${decimalAHoraStr(nuevoFin)}.\n\n¿Confirmar cambios?`,
+          titulo: drag.tipo === 'mover' ? 'Mover actividad' : 'Cambiar duración',
+          mensaje: `${accion} "${evOriginal.tarea}" a ${decimalAHoraStr(nuevoInicio)} - ${decimalAHoraStr(nuevoFin)}.`,
           textoConfirmar: 'Guardar',
-          colorConfirmar: '#2563eb',
+          colorConfirmar: 'var(--primary)',
           alConfirmar: async () => {
             try {
               const { error } = await supabase
@@ -813,42 +695,20 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
       setSobrePapelera(false);
     };
 
-    window.addEventListener('mousemove', manejarMove);
-    window.addEventListener('mouseup', manejarUp);
+    window.addEventListener('pointermove', manejarMove);
+    window.addEventListener('pointerup', manejarUp);
+    window.addEventListener('pointercancel', manejarUp);
     return () => {
-      window.removeEventListener('mousemove', manejarMove);
-      window.removeEventListener('mouseup', manejarUp);
+      window.removeEventListener('pointermove', manejarMove);
+      window.removeEventListener('pointerup', manejarUp);
+      window.removeEventListener('pointercancel', manejarUp);
     };
   }, [drag]);
 
-  const estiloBotonNav: React.CSSProperties = {
-    width: '2rem', height: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '0.375rem',
-    color: '#334155', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1,
-  };
-
-  const estiloSelectNav: React.CSSProperties = {
-    padding: '0.4rem 0.5rem', borderRadius: '0.375rem', border: '1px solid var(--border)',
-    backgroundColor: '#fff', color: '#334155', fontSize: '0.85rem', cursor: 'pointer',
-  };
-
-  const estiloModalOverlay: React.CSSProperties = {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 999, backdropFilter: 'blur(4px)',
-  };
-
-  const estiloModalContenedor: React.CSSProperties = {
-    backgroundColor: '#fff', borderRadius: '0.75rem', padding: '1.5rem', width: '90%', maxWidth: '500px',
-    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
-    border: '1px solid var(--border)',
-  };
-
   if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Cargando planificación semanal...</div>;
+    return <div className="empty-state">Cargando planificación...</div>;
   }
 
-  // Ghost de previsualización durante arrastre
   const ghost =
     drag && (drag.tipo === 'mover' || drag.tipo === 'redimensionar-superior' || drag.tipo === 'redimensionar-inferior')
       ? {
@@ -861,270 +721,162 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
               : drag.currentFin - drag.inicioOriginal) * ALTURA_FILA,
         }
       : drag && drag.tipo === 'crear'
-      ? {
-          top: drag.currentInicio * ALTURA_FILA,
-          height: (drag.currentFin - drag.currentInicio) * ALTURA_FILA,
-        }
+      ? { top: drag.currentInicio * ALTURA_FILA, height: (drag.currentFin - drag.currentInicio) * ALTURA_FILA }
       : null;
 
+  const tiposTurno: { tipo: string; etiqueta: string; color: string; bg: string }[] = [
+    { tipo: 'mañana', etiqueta: '🌅 Mañana', color: 'var(--primary-700)', bg: 'var(--primary-bg)' },
+    { tipo: 'tarde', etiqueta: '🌆 Tarde', color: 'var(--warning)', bg: 'var(--warning-bg)' },
+    { tipo: 'noche', etiqueta: '🌃 Noche', color: '#fff', bg: '#1e1b4b' },
+    { tipo: 'partido', etiqueta: '💼 Partido', color: 'var(--info)', bg: 'var(--info-bg)' },
+    { tipo: 'vacaciones', etiqueta: '✈️ Vacaciones', color: 'var(--error)', bg: 'var(--error-bg)' },
+    { tipo: 'libre', etiqueta: '🟢 Libre / Quitar', color: 'var(--success)', bg: 'var(--success-bg)' },
+  ];
+
   return (
-    <div style={{ marginTop: '1rem', paddingTop: '0.5rem' }}>
-      <h3 style={{ margin: '0 0 1rem 0', color: 'var(--text-primary)', fontSize: '1.2rem' }}>
-        📋 Mi Planificación Semanal
-      </h3>
-
-      <div
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
-          gap: '0.75rem', marginBottom: '1rem', backgroundColor: 'var(--surface-subtle)',
-          border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.6rem 0.75rem',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" onClick={irSemanaAnterior} title="Semana anterior" style={estiloBotonNav}>«</button>
-          <button type="button" onClick={irDiaAnterior} title="Día anterior" style={estiloBotonNav}>‹</button>
-          <button type="button" onClick={irHoy} style={{ ...estiloBotonNav, width: 'auto', padding: '0.4rem 0.75rem', fontWeight: 'bold' }}>Hoy</button>
-          <button type="button" onClick={irDiaSiguiente} title="Día siguiente" style={estiloBotonNav}>›</button>
-          <button type="button" onClick={irSemanaSiguiente} title="Semana siguiente" style={estiloBotonNav}>»</button>
+    <div>
+      {/* Navegación de fechas */}
+      <div className="card" style={{ padding: '0.6rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+        <div className="row">
+          <button className="icon-btn" onClick={() => irSemana(-1)} title="Semana anterior">«</button>
+          <button className="icon-btn" onClick={() => irDia(-1)} title="Día anterior">‹</button>
+          <button className="btn btn-ghost" style={{ padding: '0.5rem 0.75rem' }} onClick={irHoy}>Hoy</button>
+          <button className="icon-btn" onClick={() => irDia(1)} title="Día siguiente">›</button>
+          <button className="icon-btn" onClick={() => irSemana(1)} title="Semana siguiente">»</button>
         </div>
-
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          <select value={fechaBase.getMonth()} onChange={cambiarMes} style={estiloSelectNav}>
-            {NOMBRES_MESES.map((nombre, indice) => (
-              <option key={nombre} value={indice}>{nombre}</option>
-            ))}
+        <div className="row">
+          <select className="select" style={{ padding: '0.4rem 0.45rem', fontSize: '0.8rem' }} value={fechaBase.getMonth()} onChange={cambiarMes}>
+            {NOMBRES_MESES.map((nombre, i) => <option key={nombre} value={i}>{nombre}</option>)}
           </select>
-          <select value={fechaBase.getFullYear()} onChange={cambiarAnio} style={estiloSelectNav}>
-            {rangoAnios.map((anio) => (
-              <option key={anio} value={anio}>{anio}</option>
-            ))}
+          <select className="select" style={{ padding: '0.4rem 0.45rem', fontSize: '0.8rem' }} value={fechaBase.getFullYear()} onChange={cambiarAnio}>
+            {rangoAnios.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
-          gap: '0.75rem', marginBottom: '1.5rem',
-        }}
-      >
+      {/* Day strip horizontal */}
+      <div className="day-strip" style={{ marginBottom: '1rem' }}>
         {diasSemana.map((dia) => {
           const esActivo = diaSeleccionado === dia;
-          const infoTurno = obtenerInfoTurnoDelDia(dia);
+          const info = obtenerInfoTurnoDelDia(dia);
+          const d = new Date(dia + 'T00:00:00');
+          const esHoy = dia === new Date().toISOString().split('T')[0];
           return (
             <div
               key={dia}
+              className={`day-chip ${esActivo ? 'active' : ''}`}
               onClick={() => setDiaSeleccionado(dia)}
-              style={{
-                backgroundColor: infoTurno.estilo.bg, color: infoTurno.estilo.text,
-                border: esActivo ? '2px solid #2563eb' : `1px solid ${infoTurno.estilo.border || 'var(--border)'}`,
-                borderRadius: '0.5rem', padding: '0.75rem', textAlign: 'center', cursor: 'pointer',
-                boxShadow: esActivo ? '0 0 8px rgba(37, 99, 235, 0.2)' : 'none',
-              }}
             >
-              <div style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
-                {new Date(dia + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
+              <div className="day-chip-dow" style={{ color: esHoy ? 'var(--primary)' : undefined }}>
+                {d.toLocaleDateString('es-ES', { weekday: 'short' })}
               </div>
-              <div style={{ fontSize: '0.72rem', marginTop: '0.25rem', fontWeight: 'bold' }}>{infoTurno.texto}</div>
+              <div className="day-chip-num" style={{ color: esHoy ? 'var(--primary)' : undefined }}>{d.getDate()}</div>
+              {info && (
+                <div className="day-chip-tag" style={{ backgroundColor: info.estilo.chip, color: info.estilo.text }}>
+                  {info.estilo.emoji} {info.texto}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
       {diaSeleccionado && (
-        <div style={{ backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '1.25rem' }}>
-          <div style={{ borderBottom: '2px solid var(--surface-subtle)', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
-            <h4 style={{ margin: 0, color: '#1e293b', textTransform: 'capitalize', fontSize: '1.1rem' }}>
-              📅 Agenda del{' '}
-              {new Date(diaSeleccionado + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+        <div className="card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <h4 className="section-title" style={{ margin: 0, textTransform: 'capitalize' }}>
+              📅 {new Date(diaSeleccionado + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </h4>
-            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Arrastra un evento para moverlo · arrastra los bordes superior/inferior para cambiar su duración · arrastra sobre un hueco vacío para crear · suelta un evento en la papelera para borrar.
-            </p>
+            <button className="btn btn-ghost" style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setMostrarPanelTurno((v) => !v)}>
+              🏷️ Turno
+            </button>
           </div>
 
-          <div
-            style={{
-              display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap',
-              backgroundColor: 'var(--surface-subtle)', padding: '0.75rem', borderRadius: '0.5rem',
-              border: '1px solid var(--border)', alignItems: 'center',
-            }}
-          >
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>Asignar Turno Hoy:</span>
-            <button onClick={() => guardarTurnoTrabajo('mañana')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: '#fff', fontWeight: '500' }}>🌅 Mañana</button>
-            <button onClick={() => guardarTurnoTrabajo('tarde')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: '#fff', fontWeight: '500' }}>🌆 Tarde</button>
-            <button onClick={() => guardarTurnoTrabajo('noche')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: 'none', backgroundColor: '#1e1b4b', color: '#fff', fontWeight: '500' }}>🌃 Noche (Multi-día)</button>
-            <button onClick={() => guardarTurnoTrabajo('partido')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid #0f766e', backgroundColor: '#ccfbf1', color: '#0f766e', fontWeight: '500' }}>💼 Partido</button>
-            <button onClick={() => guardarTurnoTrabajo('vacaciones')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid #9f1239', backgroundColor: '#ffe4e6', color: '#9f1239', fontWeight: '500' }}>✈️ Vacaciones</button>
-            <button onClick={() => guardarTurnoTrabajo('libre')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: '#fff', fontWeight: '500' }}>🟢 Libre / Quitar</button>
-          </div>
-
-          {mostrarModalCrear && (
-            <div style={estiloModalOverlay} onClick={() => setMostrarModalCrear(false)}>
-              <div style={estiloModalContenedor} onClick={(e) => e.stopPropagation()}>
-                <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#1e293b' }}>＋ Añadir Nueva Actividad</h3>
-                <form onSubmit={agregarQuehacer} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.25rem' }}>Nombre de la Actividad</label>
-                    <input type="text" value={nuevaTarea} onChange={(e) => setNuevaTarea(e.target.value)} placeholder="Ej: Estudiar, cita médica..." style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--border)', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.25rem' }}>Fecha y Hora de Inicio</label>
-                    <input type="datetime-local" value={qFechaHoraInicio} onChange={(e) => setQFechaHoraInicio(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--border)', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.25rem' }}>Fecha y Hora de Finalización</label>
-                    <input type="datetime-local" value={qFechaHoraFin} onChange={(e) => setQFechaHoraFin(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--border)', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.25rem' }}>Etiqueta (opcional)</label>
-                    <select value={qEtiquetaId} onChange={(e) => setQEtiquetaId(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--border)', fontSize: '0.9rem', boxSizing: 'border-box', backgroundColor: '#fff' }}>
-                      <option value="">Sin etiqueta</option>
-                      {etiquetas.map((et) => (<option key={et.id} value={et.id}>{et.nombre}</option>))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                    <button type="button" onClick={() => setMostrarModalCrear(false)} style={{ padding: '0.5rem 1rem', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold' }}>Cancelar</button>
-                    <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold' }}>Crear Evento</button>
-                  </div>
-                </form>
-              </div>
+          {mostrarPanelTurno && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem', padding: '0.6rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)' }}>
+              {tiposTurno.map((t) => (
+                <button
+                  key={t.tipo}
+                  onClick={() => guardarTurnoTrabajo(t.tipo)}
+                  style={{ padding: '0.4rem 0.7rem', fontSize: '0.78rem', cursor: 'pointer', borderRadius: '999px', border: '1px solid var(--border)', backgroundColor: t.bg, color: t.color, fontWeight: 600 }}
+                >
+                  {t.etiqueta}
+                </button>
+              ))}
             </div>
           )}
 
-          {mostrarModalEditar && eventoEditando && (
-            <div style={estiloModalOverlay} onClick={() => setMostrarModalEditar(false)}>
-              <div style={{ ...estiloModalContenedor, border: '1px solid #fed7aa' }} onClick={(e) => e.stopPropagation()}>
-                <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#c2410c' }}>✏️ Modificar Actividad</h3>
-                <form onSubmit={actualizarQuehacer} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#c2410c', fontWeight: 'bold', marginBottom: '0.25rem' }}>Nombre de la Actividad</label>
-                    <input type="text" value={eventoEditando.tarea} onChange={(e) => setEventoEditando({ ...eventoEditando, tarea: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #f97316', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#c2410c', fontWeight: 'bold', marginBottom: '0.25rem' }}>Nueva Fecha/Hora Inicio</label>
-                    <input type="datetime-local" value={eventoEditando.fecha_inicio} onChange={(e) => setEventoEditando({ ...eventoEditando, fecha_inicio: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #f97316', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#c2410c', fontWeight: 'bold', marginBottom: '0.25rem' }}>Nueva Fecha/Hora Fin</label>
-                    <input type="datetime-local" value={eventoEditando.fecha_fin} onChange={(e) => setEventoEditando({ ...eventoEditando, fecha_fin: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #f97316', fontSize: '0.9rem', boxSizing: 'border-box' }} required />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#c2410c', fontWeight: 'bold', marginBottom: '0.25rem' }}>Etiqueta (opcional)</label>
-                    <select value={eventoEditando.etiqueta_id || ''} onChange={(e) => setEventoEditando({ ...eventoEditando, etiqueta_id: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #f97316', fontSize: '0.9rem', boxSizing: 'border-box', backgroundColor: '#fff' }}>
-                      <option value="">Sin etiqueta</option>
-                      {etiquetas.map((et) => (<option key={et.id} value={et.id}>{et.nombre}</option>))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => eliminarQuehacer(eventoEditando.id)} style={{ padding: '0.5rem 1rem', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold' }}>Eliminar</button>
-                    <button type="button" onClick={() => setMostrarModalEditar(false)} style={{ padding: '0.5rem 1rem', backgroundColor: '#94a3b8', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold' }}>Cancelar</button>
-                    <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#ea580c', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 'bold' }}>Guardar Cambios</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
+          <p className="muted" style={{ fontSize: '0.74rem', margin: '0 0 0.75rem' }}>
+            Mantén y arrastra un evento para moverlo · arrastra los bordes para cambiar su duración · arrastra un hueco para crear · suelta en la papelera para borrar.
+          </p>
 
-          <div style={{ display: 'flex', backgroundColor: 'var(--surface-subtle)', border: '1px solid var(--border)', borderRadius: '0.5rem 0.5rem 0 0', fontWeight: 'bold', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            <div style={{ width: '60px', padding: '0.5rem', borderRight: '1px solid var(--border)', textAlign: 'center' }}>Hora</div>
-            <div style={{ flex: 1, padding: '0.5rem', paddingLeft: '1rem' }}>⏱️ Cronograma (arrastra para mover, redimensionar o crear)</div>
-          </div>
-
+          {/* Timeline */}
           <div
             ref={gridRef}
-            onMouseDown={(e) => {
+            className="timeline-wrap"
+            onPointerDown={(e) => {
               if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.celda === '1') {
                 iniciarCreacion(e);
               }
             }}
-            style={{
-              border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 0.5rem 0.5rem',
-              overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column',
-              userSelect: 'none',
-            }}
           >
             {rangoHoras.map((hora) => (
-              <div
-                key={hora}
-                data-celda="1"
-                onClick={() => {
-                  if (!drag) clickHuecoVacio(hora);
-                }}
-                style={{
-                  height: `${ALTURA_FILA}px`, borderBottom: '1px dashed var(--border)',
-                  display: 'flex', alignItems: 'flex-start', backgroundColor: '#fff',
-                  cursor: 'pointer', transition: 'background-color 0.1s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--surface-subtle)')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#fff')}
-              >
-                <div style={{ width: '60px', fontSize: '0.75rem', color: '#64748b', textAlign: 'center', paddingTop: '4px', borderRight: '1px solid var(--surface-subtle)', height: '100%', fontWeight: '500', userSelect: 'none' }}>
-                  {String(hora).padStart(2, '0')}:00
-                </div>
+              <div key={hora} className="timeline-row">
+                <div className="timeline-hour-label">{String(hora).padStart(2, '0')}:00</div>
+                <div className="timeline-cell" data-celda="1" />
               </div>
             ))}
 
             {eventosDelDia.map((ev) => {
-              const estaSiendoArrastrado =
+              const arrastrado =
                 drag && (drag.tipo === 'mover' || drag.tipo === 'redimensionar-superior' || drag.tipo === 'redimensionar-inferior') && drag.eventoId === ev.id;
               return (
                 <div
                   key={ev.id}
-                  onMouseDown={(e) => iniciarMovimiento(e, ev)}
+                  onPointerDown={(e) => iniciarMovimiento(e, ev)}
                   style={{
-                    position: 'absolute', top: `${ev.top}px`, height: `${ev.height}px`,
-                    left: `calc(60px + ${ev.left}%)`, width: `calc(${ev.width}% - 12px)`,
-                    backgroundColor: ev.estilo.bg, borderLeft: `4px solid ${ev.estilo.border}`,
-                    color: ev.estilo.text, padding: '4px 8px', boxSizing: 'border-box', borderRadius: '4px',
-                    fontSize: '0.75rem', zIndex: ev.esTrabajo ? 2 : 3, boxShadow: '0 2px 5px rgba(0,0,0,0.08)',
-                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', overflow: 'hidden',
-                    cursor: ev.esTrabajo ? 'default' : 'grab', transition: 'all 0.2s',
-                    opacity: estaSiendoArrastrado ? 0.35 : 1,
+                    position: 'absolute',
+                    top: `${ev.top}px`,
+                    height: `${ev.height}px`,
+                    left: `calc(${HORA_LABEL_W}px + ${ev.left}%)`,
+                    width: `calc(${ev.width}% - 8px)`,
+                    backgroundColor: ev.estilo.bg,
+                    color: ev.estilo.text,
+                    borderLeft: `4px solid ${ev.estilo.border}`,
+                    padding: '4px 6px',
+                    boxSizing: 'border-box',
+                    borderRadius: '6px',
+                    fontSize: '0.72rem',
+                    zIndex: ev.esTrabajo ? 2 : 3,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    cursor: ev.esTrabajo ? 'default' : 'grab',
+                    opacity: arrastrado ? 0.35 : 1,
+                    transition: 'opacity 0.15s',
+                    touchAction: 'none',
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                    <span style={{ fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {ev.estilo.emoji} {ev.titulo}
-                    </span>
-                    <span style={{ fontSize: '0.65rem', opacity: 0.8, marginTop: '2px' }}>{ev.subtitulo}</span>
-                    {ev.etiquetaNombre && (
-                      <span style={{ fontSize: '0.6rem', fontWeight: 'bold', marginTop: '2px', color: ev.estilo.border, opacity: 0.9 }}>
-                        🏷️ {ev.etiquetaNombre}
-                      </span>
-                    )}
-                  </div>
-
-                  {!ev.esTrabajo && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                  <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.25rem' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.estilo.emoji} {ev.titulo}</span>
+                    {!ev.esTrabajo && (
                       <button
-                        onMouseDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => { e.stopPropagation(); toggleCompletado(ev.id, ev.completado); }}
-                        title={ev.completado ? 'Marcar como pendiente' : 'Marcar como completado'}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', padding: '0 2px', color: ev.completado ? '#16a34a' : '#94a3b8' }}
+                        title={ev.completado ? 'Pendiente' : 'Completar'}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: 0, color: ev.completado ? 'var(--success)' : 'var(--text-faint)', flexShrink: 0 }}
                       >
                         {ev.completado ? '✓' : '○'}
                       </button>
-                      <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); eliminarQuehacer(ev.id); }}
-                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold', padding: '0 0 0 4px' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-
+                    )}
+                  </span>
+                  {ev.height > 30 && <span style={{ fontSize: '0.62rem', opacity: 0.85, marginTop: '1px' }}>{ev.subtitulo}</span>}
+                  {ev.height > 44 && ev.etiquetaNombre && <span style={{ fontSize: '0.58rem', fontWeight: 700, marginTop: '1px', color: ev.estilo.border }}>🏷️ {ev.etiquetaNombre}</span>}
                   {!ev.esTrabajo && (
                     <>
-                      <div
-                        onMouseDown={(e) => iniciarResize(e, ev, 'superior')}
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '6px', cursor: 'ns-resize' }}
-                      />
-                      <div
-                        onMouseDown={(e) => iniciarResize(e, ev, 'inferior')}
-                        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '6px', cursor: 'ns-resize' }}
-                      />
+                      <div onPointerDown={(e) => iniciarResize(e, ev, 'superior')} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '10px', cursor: 'ns-resize', touchAction: 'none' }} />
+                      <div onPointerDown={(e) => iniciarResize(e, ev, 'inferior')} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '10px', cursor: 'ns-resize', touchAction: 'none' }} />
                     </>
                   )}
                 </div>
@@ -1134,11 +886,23 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
             {ghost && (
               <div
                 style={{
-                  position: 'absolute', top: `${ghost.top}px`, height: `${ghost.height}px`,
-                  left: '60px', width: 'calc(100% - 60px)', backgroundColor: drag?.tipo === 'crear' ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.25)',
-                  border: '2px dashed #2563eb', borderRadius: '4px', boxSizing: 'border-box',
-                  zIndex: 10, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#2563eb', fontSize: '0.72rem', fontWeight: 'bold',
+                  position: 'absolute',
+                  top: `${ghost.top}px`,
+                  height: `${ghost.height}px`,
+                  left: `${HORA_LABEL_W}px`,
+                  width: `calc(100% - ${HORA_LABEL_W}px)`,
+                  backgroundColor: drag?.tipo === 'crear' ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.25)',
+                  border: '2px dashed var(--primary)',
+                  borderRadius: '6px',
+                  boxSizing: 'border-box',
+                  zIndex: 10,
+                  pointerEvents: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--primary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
                 }}
               >
                 {drag?.tipo === 'crear'
@@ -1156,19 +920,106 @@ export default function MiVistaSemanal({ usuarioId, onCambio, onFechaSeleccionad
         </div>
       )}
 
-      {/* Papelera flotante durante arrastre */}
+      {/* FAB añadir */}
+      <button className="fab" onClick={() => clickHuecoVacio(new Date().getHours())} title="Añadir actividad">＋</button>
+
+      {/* Papelera flotante */}
       {drag && drag.tipo === 'mover' && (
         <div
           ref={papeleraRef}
           style={{
-            position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 1100,
-            backgroundColor: sobrePapelera ? '#dc2626' : 'rgba(220, 38, 38, 0.9)', color: '#fff',
-            padding: '1rem 1.25rem', borderRadius: '0.75rem', boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
-            display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.95rem',
-            transition: 'background-color 0.15s, transform 0.15s', transform: sobrePapelera ? 'scale(1.08)' : 'scale(1)',
+            position: 'fixed',
+            bottom: 'calc(var(--bottom-nav-h) + var(--safe-bottom) + 1rem)',
+            right: '1.25rem',
+            zIndex: 1100,
+            backgroundColor: sobrePapelera ? 'var(--error)' : 'rgba(220, 38, 38, 0.92)',
+            color: '#fff',
+            padding: '0.85rem 1.1rem',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            transition: 'background-color 0.15s, transform 0.15s',
+            transform: sobrePapelera ? 'scale(1.08)' : 'scale(1)',
           }}
         >
-          🗑️ Soltar para eliminar
+          🗑️ Soltar
+        </div>
+      )}
+
+      {/* Modal crear - bottom sheet */}
+      {mostrarModalCrear && (
+        <div className="sheet-backdrop" onClick={() => setMostrarModalCrear(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <h3 className="sheet-title">＋ Nueva Actividad</h3>
+            <form onSubmit={agregarQuehacer} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div className="field">
+                <label className="field-label">Actividad</label>
+                <input className="input" type="text" value={nuevaTarea} onChange={(e) => setNuevaTarea(e.target.value)} placeholder="Ej: Estudiar, cita médica..." required />
+              </div>
+              <div className="field">
+                <label className="field-label">Inicio</label>
+                <input className="input" type="datetime-local" value={qFechaHoraInicio} onChange={(e) => setQFechaHoraInicio(e.target.value)} required />
+              </div>
+              <div className="field">
+                <label className="field-label">Fin</label>
+                <input className="input" type="datetime-local" value={qFechaHoraFin} onChange={(e) => setQFechaHoraFin(e.target.value)} required />
+              </div>
+              <div className="field">
+                <label className="field-label">Etiqueta (opcional)</label>
+                <select className="select" value={qEtiquetaId} onChange={(e) => setQEtiquetaId(e.target.value)}>
+                  <option value="">Sin etiqueta</option>
+                  {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
+                </select>
+              </div>
+              <div className="row" style={{ justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setMostrarModalCrear(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Crear</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar - bottom sheet */}
+      {mostrarModalEditar && eventoEditando && (
+        <div className="sheet-backdrop" onClick={() => setMostrarModalEditar(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-handle" />
+            <h3 className="sheet-title">✏️ Editar Actividad</h3>
+            <form onSubmit={actualizarQuehacer} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div className="field">
+                <label className="field-label">Actividad</label>
+                <input className="input" type="text" value={eventoEditando.tarea} onChange={(e) => setEventoEditando({ ...eventoEditando, tarea: e.target.value })} required />
+              </div>
+              <div className="field">
+                <label className="field-label">Inicio</label>
+                <input className="input" type="datetime-local" value={eventoEditando.fecha_inicio} onChange={(e) => setEventoEditando({ ...eventoEditando, fecha_inicio: e.target.value })} required />
+              </div>
+              <div className="field">
+                <label className="field-label">Fin</label>
+                <input className="input" type="datetime-local" value={eventoEditando.fecha_fin} onChange={(e) => setEventoEditando({ ...eventoEditando, fecha_fin: e.target.value })} required />
+              </div>
+              <div className="field">
+                <label className="field-label">Etiqueta (opcional)</label>
+                <select className="select" value={eventoEditando.etiqueta_id || ''} onChange={(e) => setEventoEditando({ ...eventoEditando, etiqueta_id: e.target.value })}>
+                  <option value="">Sin etiqueta</option>
+                  {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
+                </select>
+              </div>
+              <div className="row" style={{ justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                <button type="button" className="btn btn-danger" onClick={() => eliminarQuehacer(eventoEditando.id)}>Eliminar</button>
+                <div className="row">
+                  <button type="button" className="btn btn-ghost" onClick={() => setMostrarModalEditar(false)}>Cancelar</button>
+                  <button type="submit" className="btn btn-primary">Guardar</button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

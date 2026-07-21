@@ -13,7 +13,7 @@ const COLORES_SUGERIDOS = [
   '#f59e0b',
   '#10b981',
   '#3b82f6',
-  '#8b5cf6',
+  '#0891b2',
   '#ec4899',
 ];
 
@@ -31,6 +31,7 @@ export default function GestionEtiquetas({
   const [color, setColor] = useState('#3b82f6');
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState('');
+  const [mostrarForm, setMostrarForm] = useState(false);
 
   const cargarEtiquetas = useCallback(async () => {
     const { data, error } = await supabase
@@ -52,6 +53,7 @@ export default function GestionEtiquetas({
     setNombre('');
     setMotivo('');
     setColor('#3b82f6');
+    setMostrarForm(false);
   };
 
   const guardarEtiqueta = async (e: React.FormEvent) => {
@@ -90,15 +92,11 @@ export default function GestionEtiquetas({
     setNombre(et.nombre);
     setMotivo(et.motivo || '');
     setColor(et.color);
+    setMostrarForm(true);
   };
 
   const borrarEtiqueta = async (id: string) => {
-    if (
-      !confirm(
-        '¿Borrar esta etiqueta? Los eventos que la usan se quedarán sin etiqueta.'
-      )
-    )
-      return;
+    if (!confirm('¿Borrar esta etiqueta? Los eventos que la usan se quedarán sin etiqueta.')) return;
     await supabase.from('etiquetas').delete().eq('id', id);
     if (editandoId === id) limpiarFormulario();
     await cargarEtiquetas();
@@ -106,175 +104,110 @@ export default function GestionEtiquetas({
   };
 
   return (
-    <div
-      style={{
-        fontFamily: 'sans-serif',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.5rem',
-      }}
-    >
-      <h3
-        style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.2rem' }}
-      >
-        🏷️ Mis Etiquetas
-      </h3>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h3 className="section-title" style={{ margin: 0 }}>🏷️ Mis Etiquetas</h3>
+        <button
+          className="btn btn-primary"
+          style={{ padding: '0.5rem 0.9rem', fontSize: '0.85rem' }}
+          onClick={() => {
+            if (mostrarForm) limpiarFormulario();
+            else setMostrarForm(true);
+          }}
+        >
+          {mostrarForm ? 'Cancelar' : '＋ Nueva'}
+        </button>
+      </div>
 
-      <form
-        onSubmit={guardarEtiqueta}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-          backgroundColor: 'var(--surface-subtle)',
-          border: '1px solid var(--border)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 180px' }}>
-            <label style={estiloLabel}>Nombre</label>
+      {mostrarForm && (
+        <form
+          onSubmit={guardarEtiqueta}
+          className="card"
+          style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
+          <div className="field">
+            <label className="field-label">Nombre</label>
             <input
+              className="input"
               type="text"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ej. Trabajo, Personal, Urgente..."
+              placeholder="Ej. Trabajo, Personal..."
               required
-              style={estiloInput}
+              autoFocus
             />
           </div>
-          <div style={{ flex: '2 1 220px' }}>
-            <label style={estiloLabel}>Motivo (opcional)</label>
+          <div className="field">
+            <label className="field-label">Motivo (opcional)</label>
             <input
+              className="input"
               type="text"
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               placeholder="¿Para qué usas esta etiqueta?"
-              style={estiloInput}
             />
           </div>
-        </div>
-
-        <div>
-          <label style={estiloLabel}>Color</label>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              flexWrap: 'wrap',
-            }}
-          >
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              style={{
-                width: '2.5rem',
-                height: '2.5rem',
-                padding: 0,
-                border: '1px solid var(--border)',
-                borderRadius: '0.375rem',
-                cursor: 'pointer',
-              }}
-            />
-            {COLORES_SUGERIDOS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                title={c}
-                style={{
-                  width: '1.75rem',
-                  height: '1.75rem',
-                  borderRadius: '50%',
-                  backgroundColor: c,
-                  border:
-                    c === color
-                      ? '2px solid var(--text-primary)'
-                      : '2px solid transparent',
-                  cursor: 'pointer',
-                }}
+          <div className="field">
+            <label className="field-label">Color</label>
+            <div className="row row-wrap" style={{ gap: '0.5rem' }}>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                style={{ width: '2.5rem', height: '2.5rem', padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
               />
-            ))}
+              {COLORES_SUGERIDOS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  title={c}
+                  style={{
+                    width: '1.85rem',
+                    height: '1.85rem',
+                    borderRadius: '50%',
+                    backgroundColor: c,
+                    border: c === color ? '2px solid var(--text-primary)' : '2px solid transparent',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="submit" style={estiloBotonPrimario}>
-            {editandoId ? 'Guardar cambios' : '+ Crear etiqueta'}
-          </button>
-          {editandoId && (
-            <button
-              type="button"
-              onClick={limpiarFormulario}
-              style={estiloBotonSecundario}
-            >
-              Cancelar
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <button type="submit" className="btn btn-primary">
+              {editandoId ? 'Guardar cambios' : 'Crear etiqueta'}
             </button>
-          )}
-        </div>
+          </div>
 
-        {mensaje && (
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#059669' }}>
-            {mensaje}
-          </p>
-        )}
-      </form>
+          {mensaje && <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--success)' }}>{mensaje}</p>}
+        </form>
+      )}
 
       {loading ? (
-        <p style={{ color: 'var(--text-muted)' }}>Cargando etiquetas...</p>
+        <p className="muted">Cargando etiquetas...</p>
       ) : etiquetas.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Todavía no tienes etiquetas. Crea la primera arriba.
-        </p>
+        <div className="empty-state">
+          <div className="empty-state-icon">🏷️</div>
+          Todavía no tienes etiquetas.
+          <div style={{ marginTop: '0.75rem' }}>
+            <button className="btn btn-primary" onClick={() => setMostrarForm(true)}>Crear la primera</button>
+          </div>
+        </div>
       ) : (
-        <div
-          style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
-        >
+        <div className="event-list">
           {etiquetas.map((et) => (
             <div
               key={et.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                padding: '0.6rem 0.75rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--border)',
-                borderLeft: `5px solid ${et.color}`,
-                backgroundColor: '#fff',
-              }}
+              className="tag-row"
+              style={{ borderLeftColor: et.color }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}
-                >
-                  {et.nombre}
-                </div>
-                {et.motivo && (
-                  <div
-                    style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}
-                  >
-                    {et.motivo}
-                  </div>
-                )}
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{et.nombre}</div>
+                {et.motivo && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{et.motivo}</div>}
               </div>
-              <button
-                onClick={() => editarEtiqueta(et)}
-                style={estiloBotonIcono}
-                title="Editar"
-              >
-                ✏️
-              </button>
-              <button
-                onClick={() => borrarEtiqueta(et.id)}
-                style={estiloBotonIcono}
-                title="Borrar"
-              >
-                🗑️
-              </button>
+              <button className="icon-btn" onClick={() => editarEtiqueta(et)} title="Editar">✏️</button>
+              <button className="icon-btn" onClick={() => borrarEtiqueta(et.id)} title="Borrar">🗑️</button>
             </div>
           ))}
         </div>
@@ -282,48 +215,3 @@ export default function GestionEtiquetas({
     </div>
   );
 }
-
-const estiloLabel: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8rem',
-  fontWeight: 'bold',
-  color: 'var(--text-muted)',
-  marginBottom: '0.25rem',
-};
-
-const estiloInput: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem',
-  border: '1px solid var(--border)',
-  borderRadius: '0.375rem',
-  boxSizing: 'border-box',
-};
-
-const estiloBotonPrimario: React.CSSProperties = {
-  padding: '0.55rem 1.1rem',
-  backgroundColor: '#4f46e5',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '0.375rem',
-  fontWeight: 'bold',
-  cursor: 'pointer',
-  alignSelf: 'flex-start',
-};
-
-const estiloBotonSecundario: React.CSSProperties = {
-  padding: '0.55rem 1.1rem',
-  backgroundColor: 'var(--border)',
-  color: 'var(--text-primary)',
-  border: 'none',
-  borderRadius: '0.375rem',
-  cursor: 'pointer',
-  alignSelf: 'flex-start',
-};
-
-const estiloBotonIcono: React.CSSProperties = {
-  border: 'none',
-  background: 'transparent',
-  cursor: 'pointer',
-  fontSize: '1rem',
-  padding: '0.25rem',
-};
