@@ -51,6 +51,10 @@ export default function MisTareasSemanales({
   const [eventoEditandoId, setEventoEditandoId] = useState<string | null>(null);
   const [confirmPendiente, setConfirmPendiente] = useState<ConfirmPendiente>(null);
 
+  const [repetir, setRepetir] = useState(false);
+  const [frecuenciaRepeticion, setFrecuenciaRepeticion] = useState<'diaria' | 'semanal'>('diaria');
+  const [fechaFinRepeticion, setFechaFinRepeticion] = useState('');
+
   const obtenerDiasSemana = (offset: number) => {
     const dias: string[] = [];
     // Ancla local de "hoy" (evita desfases de zona horaria)
@@ -145,6 +149,9 @@ export default function MisTareasSemanales({
     setFechaInicio(formatearISOALocal(inicio.toISOString()));
     setFechaFin(formatearISOALocal(fin.toISOString()));
     setEtiquetaSel('');
+    setRepetir(false);
+    setFrecuenciaRepeticion('diaria');
+    setFechaFinRepeticion('');
     setMostrarModal(true);
   };
 
@@ -178,6 +185,31 @@ export default function MisTareasSemanales({
           })
           .eq('id', eventoEditandoId);
         if (error) throw error;
+      } else if (repetir && fechaFinRepeticion) {
+        const inicio = new Date(fechaInicio);
+        const fin = new Date(fechaFin);
+        const duracionMs = fin.getTime() - inicio.getTime();
+        const limiteRepeticion = new Date(fechaFinRepeticion + 'T23:59:59');
+        const paso = frecuenciaRepeticion === 'diaria' ? 1 : 7;
+        const registros: any[] = [];
+        let cursor = new Date(inicio);
+        while (cursor <= limiteRepeticion) {
+          const cursorFin = new Date(cursor.getTime() + duracionMs);
+          registros.push({
+            usuario_id: usuarioId,
+            tarea: nuevaTarea.trim(),
+            fecha_inicio: cursor.toISOString(),
+            fecha_fin: cursorFin.toISOString(),
+            fecha: cursor.toISOString().split('T')[0],
+            completado: false,
+            etiqueta_id: etiquetaSel || null,
+          });
+          cursor.setDate(cursor.getDate() + paso);
+        }
+        if (registros.length > 0) {
+          const { error } = await supabase.from('quehaceres_diarios').insert(registros);
+          if (error) throw error;
+        }
       } else {
         const { error } = await supabase.from('quehaceres_diarios').insert({
           usuario_id: usuarioId,
@@ -476,6 +508,47 @@ export default function MisTareasSemanales({
                   {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
                 </select>
               </div>
+
+              {modoModal === 'crear' && (
+                <div className="field">
+                  <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={repetir}
+                      onChange={(e) => setRepetir(e.target.checked)}
+                      style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+                    />
+                    Repetir esta tarea
+                  </label>
+                  {repetir && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem', padding: '0.75rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                      <div className="field">
+                        <label className="field-label">Frecuencia</label>
+                        <select
+                          className="select"
+                          value={frecuenciaRepeticion}
+                          onChange={(e) => setFrecuenciaRepeticion(e.target.value as 'diaria' | 'semanal')}
+                        >
+                          <option value="diaria">Todos los días</option>
+                          <option value="semanal">Cada semana (mismo día)</option>
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label className="field-label">Repetir hasta</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={fechaFinRepeticion}
+                          min={fechaInicio.split('T')[0]}
+                          onChange={(e) => setFechaFinRepeticion(e.target.value)}
+                          required={repetir}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="row" style={{ justifyContent: 'space-between', marginTop: '0.25rem' }}>
                 {modoModal === 'editar' && eventoEditandoId ? (
                   <button type="button" className="btn btn-danger" onClick={() => eliminar(eventoEditandoId)}>Eliminar</button>

@@ -4,13 +4,14 @@ import Login from './Login';
 import ConfiguracionPerfil from './ConfiguracionPerfil';
 import MiVistaSemanal from './MiVistaSemanal';
 import VistaCuadriculaSemanal from './VistaCuadriculaSemanal';
+import VistaMensual from './VistaMensual';
 import MisTareasSemanales from './MisTareasSemanales';
 import GestionEtiquetas from './GestionEtiquetas';
 import ResumenEstadisticas from './ResumenEstadisticas';
 import { useTheme } from './ThemeContext';
 
 type Tab = 'agenda' | 'tareas' | 'etiquetas';
-type VistaAgenda = 'dia' | 'semana';
+type VistaAgenda = 'dia' | 'semana' | 'mes';
 
 export default function App() {
   const { tema, toggleTema } = useTheme();
@@ -127,11 +128,11 @@ export default function App() {
         {tabActiva === 'agenda' ? (
           <>
             <div className="row" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
-              <div style={{ display: 'inline-flex', backgroundColor: 'var(--surface-subtle)', borderRadius: '999px', padding: '0.2rem' }}>
+              <div style={{ display: 'inline-flex', backgroundColor: 'var(--surface-subtle)', borderRadius: '999px', padding: '0.2rem', gap: '0.1rem' }}>
                 <button
                   onClick={() => setVistaAgenda('dia')}
                   style={{
-                    padding: '0.4rem 1rem',
+                    padding: '0.4rem 0.85rem',
                     fontSize: '0.8rem',
                     fontWeight: 600,
                     border: 'none',
@@ -147,7 +148,7 @@ export default function App() {
                 <button
                   onClick={() => setVistaAgenda('semana')}
                   style={{
-                    padding: '0.4rem 1rem',
+                    padding: '0.4rem 0.85rem',
                     fontSize: '0.8rem',
                     fontWeight: 600,
                     border: 'none',
@@ -160,6 +161,22 @@ export default function App() {
                 >
                   🗓️ Semana
                 </button>
+                <button
+                  onClick={() => setVistaAgenda('mes')}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    borderRadius: '999px',
+                    cursor: 'pointer',
+                    backgroundColor: vistaAgenda === 'mes' ? 'var(--primary)' : 'transparent',
+                    color: vistaAgenda === 'mes' ? '#fff' : 'var(--text-muted)',
+                    transition: 'background-color 0.2s, color 0.2s',
+                  }}
+                >
+                  📅 Mes
+                </button>
               </div>
             </div>
             {vistaAgenda === 'dia' ? (
@@ -168,11 +185,16 @@ export default function App() {
                 onCambio={dispararRefresco}
                 onFechaSeleccionada={setFechaSeleccionada}
               />
-            ) : (
+            ) : vistaAgenda === 'semana' ? (
               <VistaCuadriculaSemanal
                 usuarioId={session.user.id}
                 onCambio={dispararRefresco}
                 onFechaSeleccionada={setFechaSeleccionada}
+              />
+            ) : (
+              <VistaMensual
+                usuarioId={session.user.id}
+                onDiaSeleccionado={setFechaSeleccionada}
               />
             )}
           </>

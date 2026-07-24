@@ -96,6 +96,10 @@ export default function VistaCuadriculaSemanal({
   const [qEtiquetaId, setQEtiquetaId] = useState('');
   const [eventoEditando, setEventoEditando] = useState<any | null>(null);
 
+  const [repetir, setRepetir] = useState(false);
+  const [frecuenciaRepeticion, setFrecuenciaRepeticion] = useState<'diaria' | 'semanal'>('diaria');
+  const [fechaFinRepeticion, setFechaFinRepeticion] = useState('');
+
   const gridRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [confirmPendiente, setConfirmPendiente] = useState<ConfirmPendiente>(null);
@@ -211,6 +215,9 @@ export default function VistaCuadriculaSemanal({
     setQFechaHoraFin(formatearFechaLocal(fechaFin));
     setNuevaTarea('');
     setQEtiquetaId('');
+    setRepetir(false);
+    setFrecuenciaRepeticion('diaria');
+    setFechaFinRepeticion('');
     setMostrarModalCrear(true);
   };
 
@@ -271,16 +278,43 @@ export default function VistaCuadriculaSemanal({
       return;
     }
     try {
-      const { error } = await supabase.from('quehaceres_diarios').insert({
-        usuario_id: usuarioId,
-        tarea: nuevaTarea.trim(),
-        fecha_inicio: new Date(qFechaHoraInicio).toISOString(),
-        fecha_fin: new Date(qFechaHoraFin).toISOString(),
-        fecha: qFechaHoraInicio.split('T')[0],
-        completado: false,
-        etiqueta_id: qEtiquetaId || null,
-      });
-      if (error) throw error;
+      if (repetir && fechaFinRepeticion) {
+        const inicio = new Date(qFechaHoraInicio);
+        const fin = new Date(qFechaHoraFin);
+        const duracionMs = fin.getTime() - inicio.getTime();
+        const limite = new Date(fechaFinRepeticion + 'T23:59:59');
+        const paso = frecuenciaRepeticion === 'diaria' ? 1 : 7;
+        const registros: any[] = [];
+        let cursor = new Date(inicio);
+        while (cursor <= limite) {
+          const cursorFin = new Date(cursor.getTime() + duracionMs);
+          registros.push({
+            usuario_id: usuarioId,
+            tarea: nuevaTarea.trim(),
+            fecha_inicio: cursor.toISOString(),
+            fecha_fin: cursorFin.toISOString(),
+            fecha: cursor.toISOString().split('T')[0],
+            completado: false,
+            etiqueta_id: qEtiquetaId || null,
+          });
+          cursor.setDate(cursor.getDate() + paso);
+        }
+        if (registros.length > 0) {
+          const { error } = await supabase.from('quehaceres_diarios').insert(registros);
+          if (error) throw error;
+        }
+      } else {
+        const { error } = await supabase.from('quehaceres_diarios').insert({
+          usuario_id: usuarioId,
+          tarea: nuevaTarea.trim(),
+          fecha_inicio: new Date(qFechaHoraInicio).toISOString(),
+          fecha_fin: new Date(qFechaHoraFin).toISOString(),
+          fecha: qFechaHoraInicio.split('T')[0],
+          completado: false,
+          etiqueta_id: qEtiquetaId || null,
+        });
+        if (error) throw error;
+      }
       setMostrarModalCrear(false);
       await cargarDatos(diasSemana);
       onCambio?.();
@@ -1006,6 +1040,32 @@ export default function VistaCuadriculaSemanal({
                   <option value="">Sin etiqueta</option>
                   {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
                 </select>
+              </div>
+              <div className="field">
+                <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={repetir}
+                    onChange={(e) => setRepetir(e.target.checked)}
+                    style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
+                  />
+                  Repetir esta tarea
+                </label>
+                {repetir && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem', padding: '0.75rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <div className="field">
+                      <label className="field-label">Frecuencia</label>
+                      <select className="select" value={frecuenciaRepeticion} onChange={(e) => setFrecuenciaRepeticion(e.target.value as 'diaria' | 'semanal')}>
+                        <option value="diaria">Todos los días</option>
+                        <option value="semanal">Cada semana (mismo día)</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label className="field-label">Repetir hasta</label>
+                      <input className="input" type="date" value={fechaFinRepeticion} min={qFechaHoraInicio.split('T')[0]} onChange={(e) => setFechaFinRepeticion(e.target.value)} required={repetir} />
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="row" style={{ justifyContent: 'flex-end', marginTop: '0.25rem' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setMostrarModalCrear(false)}>Cancelar</button>
