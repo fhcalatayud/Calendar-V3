@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { Etiqueta } from './GestionEtiquetas';
 import ModalConfirmacion from './ModalConfirmacion';
+import PanelRepeticion from './PanelRepeticion';
+import { generarRegistrosRepeticion } from './repeticion';
 
 type DragState =
   | {
@@ -95,6 +97,10 @@ export default function MiVistaSemanal({
   const [qFechaHoraFin, setQFechaHoraFin] = useState('');
   const [qEtiquetaId, setQEtiquetaId] = useState('');
   const [eventoEditando, setEventoEditando] = useState<any | null>(null);
+
+  const [repetir, setRepetir] = useState(false);
+  const [diasRepeticion, setDiasRepeticion] = useState<number[]>([]);
+  const [fechaFinRepeticion, setFechaFinRepeticion] = useState('');
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -205,6 +211,9 @@ export default function MiVistaSemanal({
     setQFechaHoraFin(formatearFechaLocal(fechaFin));
     setNuevaTarea('');
     setQEtiquetaId('');
+    setRepetir(false);
+    setDiasRepeticion([]);
+    setFechaFinRepeticion('');
     setMostrarModalCrear(true);
   };
 
@@ -267,16 +276,46 @@ export default function MiVistaSemanal({
       return;
     }
     try {
-      const { error } = await supabase.from('quehaceres_diarios').insert({
-        usuario_id: usuarioId,
-        tarea: nuevaTarea.trim(),
-        fecha_inicio: new Date(qFechaHoraInicio).toISOString(),
-        fecha_fin: new Date(qFechaHoraFin).toISOString(),
-        fecha: qFechaHoraInicio.split('T')[0],
-        completado: false,
-        etiqueta_id: qEtiquetaId || null,
-      });
-      if (error) throw error;
+      if (repetir) {
+        if (diasRepeticion.length === 0) {
+          alert('Elige al menos un día de la semana para repetir la tarea.');
+          return;
+        }
+        if (!fechaFinRepeticion) {
+          alert('Elige una fecha límite para la repetición.');
+          return;
+        }
+        if (new Date(fechaFinRepeticion + 'T23:59:59') < new Date(qFechaHoraInicio)) {
+          alert('La fecha límite de repetición no puede ser anterior al inicio de la tarea.');
+          return;
+        }
+        const registros = generarRegistrosRepeticion({
+          usuarioId,
+          tarea: nuevaTarea.trim(),
+          fechaHoraInicio: qFechaHoraInicio,
+          fechaHoraFin: qFechaHoraFin,
+          etiquetaId: qEtiquetaId || null,
+          diasRepeticion,
+          fechaFinRepeticion,
+        });
+        if (registros.length === 0) {
+          alert('No se generó ninguna repetición: revisa los días elegidos y la fecha límite.');
+          return;
+        }
+        const { error } = await supabase.from('quehaceres_diarios').insert(registros);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('quehaceres_diarios').insert({
+          usuario_id: usuarioId,
+          tarea: nuevaTarea.trim(),
+          fecha_inicio: new Date(qFechaHoraInicio).toISOString(),
+          fecha_fin: new Date(qFechaHoraFin).toISOString(),
+          fecha: qFechaHoraInicio.split('T')[0],
+          completado: false,
+          etiqueta_id: qEtiquetaId || null,
+        });
+        if (error) throw error;
+      }
       setMostrarModalCrear(false);
       await cargarDatos(diasSemana);
       onCambio?.();
@@ -620,35 +659,16 @@ export default function MiVistaSemanal({
         return;
       }
       if (drag.tipo === 'crear') {
-        const inicio = drag.currentInicio;
-        const fin = drag.currentFin;
-        const fechaInicio = construirFechaHora(diaSeleccionado!, inicio);
-        const fechaFin = construirFechaHora(diaSeleccionado!, fin);
-        setConfirmPendiente({
-          titulo: 'Crear nueva actividad',
-          mensaje: `Crear evento el ${new Date(diaSeleccionado! + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })} de ${decimalAHoraStr(inicio)} a ${decimalAHoraStr(fin)}.`,
-          textoConfirmar: 'Crear evento',
-          colorConfirmar: 'var(--primary)',
-          alConfirmar: async () => {
-            try {
-              const { error } = await supabase.from('quehaceres_diarios').insert({
-                usuario_id: usuarioId,
-                tarea: 'Nueva actividad',
-                fecha_inicio: fechaInicio.toISOString(),
-                fecha_fin: fechaFin.toISOString(),
-                fecha: diaSeleccionado!,
-                completado: false,
-              });
-              if (error) throw error;
-              await cargarDatos(diasSemana);
-              onCambio?.();
-            } catch (err: any) {
-              alert('Error creando evento: ' + err.message);
-            } finally {
-              setConfirmPendiente(null);
-            }
-          },
-        });
+        const fechaInicio = construirFechaHora(diaSeleccionado!, drag.currentInicio);
+        const fechaFin = construirFechaHora(diaSeleccionado!, drag.currentFin);
+        setQFechaHoraInicio(formatearFechaLocal(fechaInicio));
+        setQFechaHoraFin(formatearFechaLocal(fechaFin));
+        setNuevaTarea('');
+        setQEtiquetaId('');
+        setRepetir(false);
+        setDiasRepeticion([]);
+        setFechaFinRepeticion('');
+        setMostrarModalCrear(true);
         setDrag(null);
         return;
       }
@@ -988,6 +1008,20 @@ export default function MiVistaSemanal({
                   {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
                 </select>
               </div>
+              <PanelRepeticion
+                repetir={repetir}
+                onCambiarRepetir={(activado) => {
+                  setRepetir(activado);
+                  if (activado && diasRepeticion.length === 0 && qFechaHoraInicio) {
+                    setDiasRepeticion([new Date(qFechaHoraInicio).getDay()]);
+                  }
+                }}
+                diasRepeticion={diasRepeticion}
+                setDiasRepeticion={setDiasRepeticion}
+                fechaFinRepeticion={fechaFinRepeticion}
+                setFechaFinRepeticion={setFechaFinRepeticion}
+                fechaInicio={qFechaHoraInicio}
+              />
               <div className="row" style={{ justifyContent: 'flex-end', marginTop: '0.25rem' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setMostrarModalCrear(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary">Crear</button>

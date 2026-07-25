@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { Etiqueta } from './GestionEtiquetas';
 import ModalConfirmacion from './ModalConfirmacion';
+import PanelRepeticion from './PanelRepeticion';
+import { generarRegistrosRepeticion } from './repeticion';
 
 type DragState =
   | {
@@ -97,7 +99,7 @@ export default function VistaCuadriculaSemanal({
   const [eventoEditando, setEventoEditando] = useState<any | null>(null);
 
   const [repetir, setRepetir] = useState(false);
-  const [frecuenciaRepeticion, setFrecuenciaRepeticion] = useState<'diaria' | 'semanal'>('diaria');
+  const [diasRepeticion, setDiasRepeticion] = useState<number[]>([]);
   const [fechaFinRepeticion, setFechaFinRepeticion] = useState('');
 
   const gridRef = useRef<HTMLDivElement>(null);
@@ -216,7 +218,7 @@ export default function VistaCuadriculaSemanal({
     setNuevaTarea('');
     setQEtiquetaId('');
     setRepetir(false);
-    setFrecuenciaRepeticion('diaria');
+    setDiasRepeticion([]);
     setFechaFinRepeticion('');
     setMostrarModalCrear(true);
   };
@@ -278,31 +280,34 @@ export default function VistaCuadriculaSemanal({
       return;
     }
     try {
-      if (repetir && fechaFinRepeticion) {
-        const inicio = new Date(qFechaHoraInicio);
-        const fin = new Date(qFechaHoraFin);
-        const duracionMs = fin.getTime() - inicio.getTime();
-        const limite = new Date(fechaFinRepeticion + 'T23:59:59');
-        const paso = frecuenciaRepeticion === 'diaria' ? 1 : 7;
-        const registros: any[] = [];
-        let cursor = new Date(inicio);
-        while (cursor <= limite) {
-          const cursorFin = new Date(cursor.getTime() + duracionMs);
-          registros.push({
-            usuario_id: usuarioId,
-            tarea: nuevaTarea.trim(),
-            fecha_inicio: cursor.toISOString(),
-            fecha_fin: cursorFin.toISOString(),
-            fecha: cursor.toISOString().split('T')[0],
-            completado: false,
-            etiqueta_id: qEtiquetaId || null,
-          });
-          cursor.setDate(cursor.getDate() + paso);
+      if (repetir) {
+        if (diasRepeticion.length === 0) {
+          alert('Elige al menos un día de la semana para repetir la tarea.');
+          return;
         }
-        if (registros.length > 0) {
-          const { error } = await supabase.from('quehaceres_diarios').insert(registros);
-          if (error) throw error;
+        if (!fechaFinRepeticion) {
+          alert('Elige una fecha límite para la repetición.');
+          return;
         }
+        if (new Date(fechaFinRepeticion + 'T23:59:59') < new Date(qFechaHoraInicio)) {
+          alert('La fecha límite de repetición no puede ser anterior al inicio de la tarea.');
+          return;
+        }
+        const registros = generarRegistrosRepeticion({
+          usuarioId,
+          tarea: nuevaTarea.trim(),
+          fechaHoraInicio: qFechaHoraInicio,
+          fechaHoraFin: qFechaHoraFin,
+          etiquetaId: qEtiquetaId || null,
+          diasRepeticion,
+          fechaFinRepeticion,
+        });
+        if (registros.length === 0) {
+          alert('No se generó ninguna repetición: revisa los días elegidos y la fecha límite.');
+          return;
+        }
+        const { error } = await supabase.from('quehaceres_diarios').insert(registros);
+        if (error) throw error;
       } else {
         const { error } = await supabase.from('quehaceres_diarios').insert({
           usuario_id: usuarioId,
@@ -640,35 +645,16 @@ export default function VistaCuadriculaSemanal({
         return;
       }
       if (drag.tipo === 'crear') {
-        const inicio = drag.currentInicio;
-        const fin = drag.currentFin;
-        const fechaInicio = construirFechaHora(drag.diaInicio, inicio);
-        const fechaFin = construirFechaHora(drag.diaInicio, fin);
-        setConfirmPendiente({
-          titulo: 'Crear nueva actividad',
-          mensaje: `Crear evento el ${new Date(drag.diaInicio + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })} de ${decimalAHoraStr(inicio)} a ${decimalAHoraStr(fin)}.`,
-          textoConfirmar: 'Crear evento',
-          colorConfirmar: 'var(--primary)',
-          alConfirmar: async () => {
-            try {
-              const { error } = await supabase.from('quehaceres_diarios').insert({
-                usuario_id: usuarioId,
-                tarea: 'Nueva actividad',
-                fecha_inicio: fechaInicio.toISOString(),
-                fecha_fin: fechaFin.toISOString(),
-                fecha: drag.diaInicio,
-                completado: false,
-              });
-              if (error) throw error;
-              await cargarDatos(diasSemana);
-              onCambio?.();
-            } catch (err: any) {
-              alert('Error creando evento: ' + err.message);
-            } finally {
-              setConfirmPendiente(null);
-            }
-          },
-        });
+        const fechaInicio = construirFechaHora(drag.diaInicio, drag.currentInicio);
+        const fechaFin = construirFechaHora(drag.diaInicio, drag.currentFin);
+        setQFechaHoraInicio(formatearFechaLocal(fechaInicio));
+        setQFechaHoraFin(formatearFechaLocal(fechaFin));
+        setNuevaTarea('');
+        setQEtiquetaId('');
+        setRepetir(false);
+        setDiasRepeticion([]);
+        setFechaFinRepeticion('');
+        setMostrarModalCrear(true);
         setDrag(null);
         return;
       }
@@ -1041,32 +1027,20 @@ export default function VistaCuadriculaSemanal({
                   {etiquetas.map((et) => <option key={et.id} value={et.id}>{et.nombre}</option>)}
                 </select>
               </div>
-              <div className="field">
-                <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={repetir}
-                    onChange={(e) => setRepetir(e.target.checked)}
-                    style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
-                  />
-                  Repetir esta tarea
-                </label>
-                {repetir && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem', padding: '0.75rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                    <div className="field">
-                      <label className="field-label">Frecuencia</label>
-                      <select className="select" value={frecuenciaRepeticion} onChange={(e) => setFrecuenciaRepeticion(e.target.value as 'diaria' | 'semanal')}>
-                        <option value="diaria">Todos los días</option>
-                        <option value="semanal">Cada semana (mismo día)</option>
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label className="field-label">Repetir hasta</label>
-                      <input className="input" type="date" value={fechaFinRepeticion} min={qFechaHoraInicio.split('T')[0]} onChange={(e) => setFechaFinRepeticion(e.target.value)} required={repetir} />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <PanelRepeticion
+                repetir={repetir}
+                onCambiarRepetir={(activado) => {
+                  setRepetir(activado);
+                  if (activado && diasRepeticion.length === 0 && qFechaHoraInicio) {
+                    setDiasRepeticion([new Date(qFechaHoraInicio).getDay()]);
+                  }
+                }}
+                diasRepeticion={diasRepeticion}
+                setDiasRepeticion={setDiasRepeticion}
+                fechaFinRepeticion={fechaFinRepeticion}
+                setFechaFinRepeticion={setFechaFinRepeticion}
+                fechaInicio={qFechaHoraInicio}
+              />
               <div className="row" style={{ justifyContent: 'flex-end', marginTop: '0.25rem' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setMostrarModalCrear(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary">Crear</button>

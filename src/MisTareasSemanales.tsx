@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import type { Etiqueta } from './GestionEtiquetas';
 import ModalConfirmacion from './ModalConfirmacion';
+import PanelRepeticion from './PanelRepeticion';
+import { generarRegistrosRepeticion } from './repeticion';
 
 type ConfirmPendiente = {
   titulo: string;
@@ -12,16 +14,6 @@ type ConfirmPendiente = {
 } | null;
 
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-// getDay(): 0=Domingo..6=Sábado. Se listan de Lunes a Domingo para la UI.
-const OPCIONES_DIAS_REPETICION = [
-  { valor: 1, corto: 'Lu', nombre: 'Lunes' },
-  { valor: 2, corto: 'Ma', nombre: 'Martes' },
-  { valor: 3, corto: 'Mi', nombre: 'Miércoles' },
-  { valor: 4, corto: 'Ju', nombre: 'Jueves' },
-  { valor: 5, corto: 'Vi', nombre: 'Viernes' },
-  { valor: 6, corto: 'Sa', nombre: 'Sábado' },
-  { valor: 0, corto: 'Do', nombre: 'Domingo' },
-];
 const NOMBRES_MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -204,35 +196,19 @@ export default function MisTareasSemanales({
           alert('Elige una fecha límite para la repetición.');
           return;
         }
-        const inicio = new Date(fechaInicio);
-        const fin = new Date(fechaFin);
-        const duracionMs = fin.getTime() - inicio.getTime();
-        const [anioLim, mesLim, diaLim] = fechaFinRepeticion.split('-').map(Number);
-        const limiteRepeticion = new Date(anioLim, mesLim - 1, diaLim, 23, 59, 59);
-        if (limiteRepeticion < inicio) {
+        if (new Date(fechaFinRepeticion + 'T23:59:59') < new Date(fechaInicio)) {
           alert('La fecha límite de repetición no puede ser anterior al inicio de la tarea.');
           return;
         }
-        const registros: any[] = [];
-        const cursor = new Date(inicio);
-        while (cursor <= limiteRepeticion) {
-          if (diasRepeticion.includes(cursor.getDay())) {
-            const cursorFin = new Date(cursor.getTime() + duracionMs);
-            const y = cursor.getFullYear();
-            const m = String(cursor.getMonth() + 1).padStart(2, '0');
-            const d = String(cursor.getDate()).padStart(2, '0');
-            registros.push({
-              usuario_id: usuarioId,
-              tarea: nuevaTarea.trim(),
-              fecha_inicio: cursor.toISOString(),
-              fecha_fin: cursorFin.toISOString(),
-              fecha: `${y}-${m}-${d}`,
-              completado: false,
-              etiqueta_id: etiquetaSel || null,
-            });
-          }
-          cursor.setDate(cursor.getDate() + 1);
-        }
+        const registros = generarRegistrosRepeticion({
+          usuarioId,
+          tarea: nuevaTarea.trim(),
+          fechaHoraInicio: fechaInicio,
+          fechaHoraFin: fechaFin,
+          etiquetaId: etiquetaSel || null,
+          diasRepeticion,
+          fechaFinRepeticion,
+        });
         if (registros.length === 0) {
           alert('No se generó ninguna repetición: revisa los días elegidos y la fecha límite.');
           return;
@@ -539,70 +515,20 @@ export default function MisTareasSemanales({
               </div>
 
               {modoModal === 'crear' && (
-                <div className="field">
-                  <label className="field-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={repetir}
-                      onChange={(e) => {
-                        const activado = e.target.checked;
-                        setRepetir(activado);
-                        if (activado && diasRepeticion.length === 0 && fechaInicio) {
-                          setDiasRepeticion([new Date(fechaInicio).getDay()]);
-                        }
-                      }}
-                      style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
-                    />
-                    Repetir esta tarea
-                  </label>
-                  {repetir && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem', padding: '0.75rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                      <div className="field">
-                        <label className="field-label">Repetir los días</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                          {OPCIONES_DIAS_REPETICION.map((d) => {
-                            const activo = diasRepeticion.includes(d.valor);
-                            return (
-                              <button
-                                key={d.valor}
-                                type="button"
-                                onClick={() =>
-                                  setDiasRepeticion((prev) =>
-                                    activo ? prev.filter((v) => v !== d.valor) : [...prev, d.valor]
-                                  )
-                                }
-                                title={d.nombre}
-                                style={{
-                                  padding: '0.4rem 0.6rem',
-                                  fontSize: '0.76rem',
-                                  cursor: 'pointer',
-                                  borderRadius: '999px',
-                                  border: `1px solid ${activo ? 'var(--primary)' : 'var(--border)'}`,
-                                  backgroundColor: activo ? 'var(--primary)' : 'var(--surface)',
-                                  color: activo ? '#fff' : 'var(--text-muted)',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {d.corto}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="field">
-                        <label className="field-label">Repetir hasta</label>
-                        <input
-                          className="input"
-                          type="date"
-                          value={fechaFinRepeticion}
-                          min={fechaInicio.split('T')[0]}
-                          onChange={(e) => setFechaFinRepeticion(e.target.value)}
-                          required={repetir}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <PanelRepeticion
+                  repetir={repetir}
+                  onCambiarRepetir={(activado) => {
+                    setRepetir(activado);
+                    if (activado && diasRepeticion.length === 0 && fechaInicio) {
+                      setDiasRepeticion([new Date(fechaInicio).getDay()]);
+                    }
+                  }}
+                  diasRepeticion={diasRepeticion}
+                  setDiasRepeticion={setDiasRepeticion}
+                  fechaFinRepeticion={fechaFinRepeticion}
+                  setFechaFinRepeticion={setFechaFinRepeticion}
+                  fechaInicio={fechaInicio}
+                />
               )}
 
               <div className="row" style={{ justifyContent: 'space-between', marginTop: '0.25rem' }}>
