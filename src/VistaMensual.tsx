@@ -7,10 +7,22 @@ const NOMBRES_MESES = [
 ];
 const DIAS_CORTO = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
 
+type TareaDelDia = {
+  id: string;
+  tarea: string;
+  horaInicio: string;
+  horaFin: string;
+  completado: boolean;
+  colorEtiqueta: string | null;
+  nombreEtiqueta: string | null;
+  inicioDecimal: number;
+};
+
 type DatosDia = {
   tareas: number;
   completadas: number;
   turno: string | null;
+  lista: TareaDelDia[];
 };
 
 const COLORES_TURNO: Record<string, { bg: string; border: string; text: string }> = {
@@ -52,10 +64,10 @@ export default function VistaMensual({
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const [{ data: tareas }, { data: turnos }] = await Promise.all([
+      const [{ data: tareas }, { data: turnos }, { data: etiquetas }] = await Promise.all([
         supabase
           .from('quehaceres_diarios')
-          .select('fecha_inicio, fecha_fin, completado')
+          .select('id, tarea, fecha_inicio, fecha_fin, completado, etiqueta_id')
           .eq('usuario_id', usuarioId)
           .gte('fecha_fin', `${primerDiaStr}T00:00:00Z`)
           .lte('fecha_inicio', `${ultimoDiaStr}T23:59:59Z`),
@@ -65,14 +77,23 @@ export default function VistaMensual({
           .eq('usuario_id', usuarioId)
           .gte('fecha', primerDiaStr)
           .lte('fecha', ultimoDiaStr),
+        supabase
+          .from('etiquetas')
+          .select('id, nombre, color')
+          .eq('usuario_id', usuarioId),
       ]);
+
+      const mapaEtiquetas: Record<string, { nombre: string; color: string }> = {};
+      (etiquetas || []).forEach((et: any) => {
+        mapaEtiquetas[et.id] = { nombre: et.nombre, color: et.color };
+      });
 
       const mapa: Record<string, DatosDia> = {};
 
       const diasDelMes = ultimoDia.getDate();
       for (let i = 1; i <= diasDelMes; i++) {
         const diaStr = `${mesBase.getFullYear()}-${String(mesBase.getMonth() + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-        mapa[diaStr] = { tareas: 0, completadas: 0, turno: null };
+        mapa[diaStr] = { tareas: 0, completadas: 0, turno: null, lista: [] };
       }
 
       (tareas || []).forEach((t) => {
@@ -85,9 +106,25 @@ export default function VistaMensual({
           if (evInicio <= finDia && evFin >= inicioDia) {
             mapa[diaStr].tareas += 1;
             if (t.completado) mapa[diaStr].completadas += 1;
+
+            const intInicio = evInicio < inicioDia ? inicioDia : evInicio;
+            const intFin = evFin > finDia ? finDia : evFin;
+            const etiqueta = t.etiqueta_id ? mapaEtiquetas[t.etiqueta_id] : null;
+            mapa[diaStr].lista.push({
+              id: t.id,
+              tarea: t.tarea,
+              horaInicio: intInicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+              horaFin: intFin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+              completado: t.completado,
+              colorEtiqueta: etiqueta?.color || null,
+              nombreEtiqueta: etiqueta?.nombre || null,
+              inicioDecimal: intInicio.getHours() + intInicio.getMinutes() / 60,
+            });
           }
         }
       });
+
+      Object.values(mapa).forEach((d) => d.lista.sort((a, b) => a.inicioDecimal - b.inicioDecimal));
 
       (turnos || []).forEach((t) => {
         if (mapa[t.fecha]) mapa[t.fecha].turno = t.tipo;
@@ -184,7 +221,7 @@ export default function VistaMensual({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
               {celdasMes.map((diaStr, idx) => {
                 if (!diaStr) return <div key={`empty-${idx}`} />;
-                const info = datos[diaStr] || { tareas: 0, completadas: 0, turno: null };
+                const info = datos[diaStr] || { tareas: 0, completadas: 0, turno: null, lista: [] };
                 const esHoy = diaStr === hoyStr;
                 const esActivo = diaStr === diaActivo;
                 const turnoColor = info.turno && COLORES_TURNO[info.turno] ? COLORES_TURNO[info.turno] : null;
@@ -297,6 +334,31 @@ export default function VistaMensual({
               </span>
             )}
           </div>
+
+          {datos[diaActivo].lista.length > 0 && (
+            <div className="event-list" style={{ marginTop: '0.75rem' }}>
+              {datos[diaActivo].lista.map((t) => (
+                <div key={t.id} className="event-card" style={{ cursor: 'default' }}>
+                  <div
+                    className="event-bar"
+                    style={{ backgroundColor: t.colorEtiqueta || (t.completado ? 'var(--success)' : 'var(--primary)') }}
+                  />
+                  <div className="event-body">
+                    <div className="event-title">
+                      <span style={{ fontSize: '0.85rem' }}>{t.completado ? '✅' : '⭕'}</span>
+                      <span style={{ textDecoration: t.completado ? 'line-through' : 'none', opacity: t.completado ? 0.65 : 1 }}>
+                        {t.tarea}
+                      </span>
+                    </div>
+                    <div className="event-time">{t.horaInicio} - {t.horaFin}</div>
+                    {t.nombreEtiqueta && (
+                      <div className="event-tag" style={{ color: t.colorEtiqueta || 'var(--text-muted)' }}>🏷️ {t.nombreEtiqueta}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

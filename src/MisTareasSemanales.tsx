@@ -12,6 +12,16 @@ type ConfirmPendiente = {
 } | null;
 
 const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+// getDay(): 0=Domingo..6=Sábado. Se listan de Lunes a Domingo para la UI.
+const OPCIONES_DIAS_REPETICION = [
+  { valor: 1, corto: 'Lu', nombre: 'Lunes' },
+  { valor: 2, corto: 'Ma', nombre: 'Martes' },
+  { valor: 3, corto: 'Mi', nombre: 'Miércoles' },
+  { valor: 4, corto: 'Ju', nombre: 'Jueves' },
+  { valor: 5, corto: 'Vi', nombre: 'Viernes' },
+  { valor: 6, corto: 'Sa', nombre: 'Sábado' },
+  { valor: 0, corto: 'Do', nombre: 'Domingo' },
+];
 const NOMBRES_MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -52,7 +62,7 @@ export default function MisTareasSemanales({
   const [confirmPendiente, setConfirmPendiente] = useState<ConfirmPendiente>(null);
 
   const [repetir, setRepetir] = useState(false);
-  const [frecuenciaRepeticion, setFrecuenciaRepeticion] = useState<'diaria' | 'semanal'>('diaria');
+  const [diasRepeticion, setDiasRepeticion] = useState<number[]>([]);
   const [fechaFinRepeticion, setFechaFinRepeticion] = useState('');
 
   const obtenerDiasSemana = (offset: number) => {
@@ -150,7 +160,7 @@ export default function MisTareasSemanales({
     setFechaFin(formatearISOALocal(fin.toISOString()));
     setEtiquetaSel('');
     setRepetir(false);
-    setFrecuenciaRepeticion('diaria');
+    setDiasRepeticion([]);
     setFechaFinRepeticion('');
     setMostrarModal(true);
   };
@@ -185,31 +195,50 @@ export default function MisTareasSemanales({
           })
           .eq('id', eventoEditandoId);
         if (error) throw error;
-      } else if (repetir && fechaFinRepeticion) {
+      } else if (repetir) {
+        if (diasRepeticion.length === 0) {
+          alert('Elige al menos un día de la semana para repetir la tarea.');
+          return;
+        }
+        if (!fechaFinRepeticion) {
+          alert('Elige una fecha límite para la repetición.');
+          return;
+        }
         const inicio = new Date(fechaInicio);
         const fin = new Date(fechaFin);
         const duracionMs = fin.getTime() - inicio.getTime();
-        const limiteRepeticion = new Date(fechaFinRepeticion + 'T23:59:59');
-        const paso = frecuenciaRepeticion === 'diaria' ? 1 : 7;
+        const [anioLim, mesLim, diaLim] = fechaFinRepeticion.split('-').map(Number);
+        const limiteRepeticion = new Date(anioLim, mesLim - 1, diaLim, 23, 59, 59);
+        if (limiteRepeticion < inicio) {
+          alert('La fecha límite de repetición no puede ser anterior al inicio de la tarea.');
+          return;
+        }
         const registros: any[] = [];
-        let cursor = new Date(inicio);
+        const cursor = new Date(inicio);
         while (cursor <= limiteRepeticion) {
-          const cursorFin = new Date(cursor.getTime() + duracionMs);
-          registros.push({
-            usuario_id: usuarioId,
-            tarea: nuevaTarea.trim(),
-            fecha_inicio: cursor.toISOString(),
-            fecha_fin: cursorFin.toISOString(),
-            fecha: cursor.toISOString().split('T')[0],
-            completado: false,
-            etiqueta_id: etiquetaSel || null,
-          });
-          cursor.setDate(cursor.getDate() + paso);
+          if (diasRepeticion.includes(cursor.getDay())) {
+            const cursorFin = new Date(cursor.getTime() + duracionMs);
+            const y = cursor.getFullYear();
+            const m = String(cursor.getMonth() + 1).padStart(2, '0');
+            const d = String(cursor.getDate()).padStart(2, '0');
+            registros.push({
+              usuario_id: usuarioId,
+              tarea: nuevaTarea.trim(),
+              fecha_inicio: cursor.toISOString(),
+              fecha_fin: cursorFin.toISOString(),
+              fecha: `${y}-${m}-${d}`,
+              completado: false,
+              etiqueta_id: etiquetaSel || null,
+            });
+          }
+          cursor.setDate(cursor.getDate() + 1);
         }
-        if (registros.length > 0) {
-          const { error } = await supabase.from('quehaceres_diarios').insert(registros);
-          if (error) throw error;
+        if (registros.length === 0) {
+          alert('No se generó ninguna repetición: revisa los días elegidos y la fecha límite.');
+          return;
         }
+        const { error } = await supabase.from('quehaceres_diarios').insert(registros);
+        if (error) throw error;
       } else {
         const { error } = await supabase.from('quehaceres_diarios').insert({
           usuario_id: usuarioId,
@@ -515,7 +544,13 @@ export default function MisTareasSemanales({
                     <input
                       type="checkbox"
                       checked={repetir}
-                      onChange={(e) => setRepetir(e.target.checked)}
+                      onChange={(e) => {
+                        const activado = e.target.checked;
+                        setRepetir(activado);
+                        if (activado && diasRepeticion.length === 0 && fechaInicio) {
+                          setDiasRepeticion([new Date(fechaInicio).getDay()]);
+                        }
+                      }}
                       style={{ width: '1rem', height: '1rem', cursor: 'pointer' }}
                     />
                     Repetir esta tarea
@@ -523,15 +558,36 @@ export default function MisTareasSemanales({
                   {repetir && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem', padding: '0.75rem', backgroundColor: 'var(--surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                       <div className="field">
-                        <label className="field-label">Frecuencia</label>
-                        <select
-                          className="select"
-                          value={frecuenciaRepeticion}
-                          onChange={(e) => setFrecuenciaRepeticion(e.target.value as 'diaria' | 'semanal')}
-                        >
-                          <option value="diaria">Todos los días</option>
-                          <option value="semanal">Cada semana (mismo día)</option>
-                        </select>
+                        <label className="field-label">Repetir los días</label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                          {OPCIONES_DIAS_REPETICION.map((d) => {
+                            const activo = diasRepeticion.includes(d.valor);
+                            return (
+                              <button
+                                key={d.valor}
+                                type="button"
+                                onClick={() =>
+                                  setDiasRepeticion((prev) =>
+                                    activo ? prev.filter((v) => v !== d.valor) : [...prev, d.valor]
+                                  )
+                                }
+                                title={d.nombre}
+                                style={{
+                                  padding: '0.4rem 0.6rem',
+                                  fontSize: '0.76rem',
+                                  cursor: 'pointer',
+                                  borderRadius: '999px',
+                                  border: `1px solid ${activo ? 'var(--primary)' : 'var(--border)'}`,
+                                  backgroundColor: activo ? 'var(--primary)' : 'var(--surface)',
+                                  color: activo ? '#fff' : 'var(--text-muted)',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {d.corto}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="field">
                         <label className="field-label">Repetir hasta</label>
